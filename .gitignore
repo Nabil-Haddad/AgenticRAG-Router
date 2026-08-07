@@ -1,0 +1,23 @@
+# Secrets
+.env
+
+# Data
+Data/raw/*
+Data/processed/*
+!Data/raw/.gitkeep
+!Data/processed/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Editor
+.vscode/
+
+# OS
+.DS_Store
