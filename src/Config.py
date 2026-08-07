@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -18,6 +19,13 @@ class Config:
     output_dir = project_root / "Data" / "processed"
     
     IS_PRODUCTION : bool = os.getenv("ENVIRONMENT", "development") == "production"
+
+    @classmethod
+    def configure_logging(cls) -> None:
+        logging.basicConfig(
+            level=getattr(logging, cls.LOG_LEVEL.upper(), logging.INFO),
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        )
 
     @classmethod
     def validate(cls)-> None:

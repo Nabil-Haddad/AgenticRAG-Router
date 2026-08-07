@@ -1,6 +1,13 @@
+import logging
 from Config import Config
+
+logger = logging.getLogger(__name__)
 
 
 def main():
-    print(f"Data directory: {Config.data_dir}")
+    logger.info(f"Data directory: {Config.data_dir}")
 
+
+if __name__ == "__main__":
+    Config.configure_logging()
+    main()
