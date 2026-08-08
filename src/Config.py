@@ -22,6 +22,9 @@ class Config:
     chunks_dir = project_root / "Data" / "chunks"
     CHUNK_SIZE : int = int(os.getenv("CHUNK_SIZE", "400"))      # tokens
     CHUNK_OVERLAP : int = int(os.getenv("CHUNK_OVERLAP", "60")) # tokens
+
+    # models
+    EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
     
     IS_PRODUCTION : bool = os.getenv("ENVIRONMENT", "development") == "production"
 
