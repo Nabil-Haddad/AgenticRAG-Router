@@ -4,6 +4,7 @@ from Document import Document
 from pathlib import Path
 import fitz
 import json
+import re
 from typing import Optional
 from dataclasses import asdict
 
@@ -11,8 +12,43 @@ logger = logging.getLogger(__name__)
 
 
 
+def log_pdf(docs : list[list[Document]])-> None:
+    for i, list_pages in enumerate(docs):
+        logger.info(f"This is the pdf number {i} : ")
+        for doc in list_pages:
+            logger.debug(f"document : {doc.id}\nsource : {doc.source}\npage number: {doc.page_num}\ncontent : {len(doc.content.split())}")
+        logger.info("#" * 50)
+
+
+def Validate(docs: list[Document]) -> list[Document]:
+    new_documents : list[Document] = []
+    word = "References"
+    pattern = r"^\[\d+\]"
+    for doc in docs:
+        # verify if it has the word "References"
+        if word in doc.content.split():
+            before, match, after = doc.content.partition(word)
+            new_content = before.strip()
+        else :
+            phrases = doc.content.split("\n")
+            phrases_number = len(phrases)
+            references = [phrase for phrase in phrases if re.match(pattern, phrase)]
+            references_number = len(references)
+            if references_number / phrases_number >= 0.20:
+                continue
+            new_content = doc.content
+        new_documents.append(Document(
+                    id = doc.id,
+                    content = new_content,
+                    source = doc.source,
+                    page_num = doc.page_num,
+                    metadata = doc.metadata,
+                            ))
+    return new_documents
+        
+                
+
 def save_pdf_json(docs: list[Document], path: Path)->None:
-    
     for d in docs:
         data = []
         json_path : Path = path / (d[0].source.removesuffix(".pdf") + ".json")
@@ -46,14 +82,6 @@ def load_pdf(path: Path)->list[Document]:
     return docs
 
 
-def log_pdf(docs : list[list[Document]])-> None:
-    for i, list_pages in enumerate(docs):
-        logger.info(f"This is the pdf number {i} : ")
-        for doc in list_pages:
-            logger.debug(f"document : {doc.id}\nsource : {doc.source}\npage number: {doc.page_num}\ncontent : {len(doc.content.split())}")
-        logger.info("#" * 50)
-
-
 def load_directory(path: Path, extensions: list[str] = None) -> None:
     if extensions is None:
         extensions = [".pdf"]
@@ -67,9 +95,14 @@ def load_directory(path: Path, extensions: list[str] = None) -> None:
             continue
         if not filepath.is_file():
             continue
+        # Load the pages of all the pdf
         list_pages = load_pdf(filepath)
+        # verify the pdfs 
+        list_pages = Validate(list_pages)
+        # add those pages as a pdf to the documents list
         documents.append(list_pages)
     # log_pdf(documents)
+    # save the pdfs to json files
     save_pdf_json(documents , Config.output_dir)
         
 
