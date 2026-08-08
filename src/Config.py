@@ -17,6 +17,11 @@ class Config:
     project_root = Path(__file__).resolve().parent.parent
     data_dir = project_root / "Data" / "raw"
     output_dir = project_root / "Data" / "processed"
+
+    # chunking 
+    chunks_dir = project_root / "Data" / "chunks"
+    CHUNK_SIZE : int = int(os.getenv("CHUNK_SIZE", "400"))      # tokens
+    CHUNK_OVERLAP : int = int(os.getenv("CHUNK_OVERLAP", "60")) # tokens
     
     IS_PRODUCTION : bool = os.getenv("ENVIRONMENT", "development") == "production"
 

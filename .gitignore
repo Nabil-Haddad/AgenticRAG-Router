@@ -4,8 +4,10 @@
 # Data
 Data/raw/*
 Data/processed/*
+Data/chunks/*
 !Data/raw/.gitkeep
 !Data/processed/.gitkeep
+!Data/chunks/.gitkeep
 
 # Python
 __pycache__/
