@@ -5,7 +5,6 @@ from pathlib import Path
 import fitz
 import json
 import re
-from typing import Optional
 from dataclasses import asdict
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,8 @@ def Validate(docs: list[Document]) -> list[Document]:
     word = "References"
     pattern = r"^\[\d+\]"
     for doc in docs:
-        # verify if it has the word "References"
+        # "References" heading marks the start of the bibliography;
+        # keep only the content before it
         if word in doc.content.split():
             before, match, after = doc.content.partition(word)
             new_content = before.strip()
@@ -82,27 +82,21 @@ def load_pdf(path: Path)->list[Document]:
     return docs
 
 
-def load_directory(path: Path, extensions: list[str] = None) -> None:
+def load_directory(path: Path, extensions: list[str] | None = None) -> None:
     if extensions is None:
         extensions = [".pdf"]
     documents = []
 
     if not path.exists():
         raise ValueError("Warning Directory doesn't exist")
-    i = 0
     for filepath in sorted(path.glob("*")):
         if filepath.suffix.lower() not in extensions:
             continue
         if not filepath.is_file():
             continue
-        # Load the pages of all the pdf
         list_pages = load_pdf(filepath)
-        # verify the pdfs 
         list_pages = Validate(list_pages)
-        # add those pages as a pdf to the documents list
         documents.append(list_pages)
-    # log_pdf(documents)
-    # save the pdfs to json files
     save_pdf_json(documents , Config.output_dir)
         
 
