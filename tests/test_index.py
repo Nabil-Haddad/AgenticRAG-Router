@@ -91,8 +91,8 @@ def test_store_index_embeds_and_stores_chunks(mocker):
 
     assert result == 2
     mock_embed.assert_called_once_with(["first chunk", "second chunk"])
-    mock_client.delete_collection.assert_called_once_with(Config.COLLECTION_NAME)
     mock_client.get_or_create_collection.assert_called_once_with(name=Config.COLLECTION_NAME)
+    mock_collection.delete.assert_called_once_with(where={"source": {"$in": ["a.pdf"]}})
     mock_collection.add.assert_called_once_with(
         ids=["c1", "c2"],
         documents=["first chunk", "second chunk"],
@@ -104,32 +104,58 @@ def test_store_index_embeds_and_stores_chunks(mocker):
     )
 
 
-def test_store_index_swallows_delete_collection_errors(mocker):
-    chunks = [make_chunk("c1", "only chunk")]
+def test_store_index_deletes_only_the_changed_sources(mocker):
+    chunks = [
+        make_chunk("c1", "chunk from a", source="a.pdf"),
+        make_chunk("c2", "chunk from b", source="b.pdf"),
+    ]
 
-    mocker.patch("src.Index.embed_texts", return_value=[[0.1]])
+    mocker.patch("src.Index.embed_texts", return_value=[[0.1], [0.2]])
     mock_client_cls = mocker.patch("src.Index.chromadb.PersistentClient")
-    mock_client = mock_client_cls.return_value
-    mock_client.delete_collection.side_effect = Exception("collection does not exist")
+    mock_collection = mock_client_cls.return_value.get_or_create_collection.return_value
 
-    result = store_index(chunks)
+    store_index(chunks)
 
-    assert result == 1
-    mock_client.get_or_create_collection.assert_called_once_with(name=Config.COLLECTION_NAME)
+    mock_collection.delete.assert_called_once_with(where={"source": {"$in": ["a.pdf", "b.pdf"]}})
 
 
 # build_index (orchestrates Process_data -> chunk_data -> store_index)
 
 def test_build_index_orchestrates_the_pipeline_in_order(tmp_path, mocker):
+    fake_changed_docs = [["sentinel-doc-group"]]
     fake_chunks = [make_chunk("c1", "text one")]
 
-    mock_process = mocker.patch("src.Index.Process_data")
+    mock_process = mocker.patch("src.Index.Process_data", return_value=fake_changed_docs)
     mock_chunk_data = mocker.patch("src.Index.chunk_data", return_value=fake_chunks)
     mock_store = mocker.patch("src.Index.store_index", return_value=1)
 
     result = build_index(tmp_path)
 
     mock_process.assert_called_once_with(tmp_path)
-    mock_chunk_data.assert_called_once_with()
+    mock_chunk_data.assert_called_once_with(fake_changed_docs)
     mock_store.assert_called_once_with(chunks=fake_chunks)
     assert result == 1
+
+
+def test_build_index_skips_when_nothing_changed(tmp_path, mocker):
+    mock_process = mocker.patch("src.Index.Process_data", return_value=None)
+    mock_chunk_data = mocker.patch("src.Index.chunk_data")
+    mock_store = mocker.patch("src.Index.store_index")
+
+    result = build_index(tmp_path)
+
+    mock_process.assert_called_once_with(tmp_path)
+    mock_chunk_data.assert_not_called()
+    mock_store.assert_not_called()
+    assert result is None
+
+
+def test_build_index_skips_storing_when_no_chunks_produced(tmp_path, mocker):
+    mocker.patch("src.Index.Process_data", return_value=[["sentinel-doc-group"]])
+    mocker.patch("src.Index.chunk_data", return_value=[])
+    mock_store = mocker.patch("src.Index.store_index")
+
+    result = build_index(tmp_path)
+
+    mock_store.assert_not_called()
+    assert result is None

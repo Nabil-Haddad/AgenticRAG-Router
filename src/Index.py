@@ -40,12 +40,12 @@ def store_index(chunks : list[Chunk])-> int :
     embeddings = embed_texts(texts)
 
     client = chromadb.PersistentClient(path=str(Config.VECTORDB_DIR))
-    try:
-        client.delete_collection(Config.COLLECTION_NAME)
-    except Exception:
-        pass
     collection = client.get_or_create_collection(name=Config.COLLECTION_NAME)
 
+    # only these chunks are being (re)written; drop their stale entries
+    # first instead of wiping and rebuilding the whole collection
+    changed_sources = sorted({c.source for c in chunks})
+    collection.delete(where={"source": {"$in": changed_sources}})
 
     collection.add(
         ids= [c.id for c in chunks],
@@ -67,10 +67,13 @@ def store_index(chunks : list[Chunk])-> int :
 
 
 def build_index(path: Path)->int | None:
-    if Process_data(path):
-        chunks = chunk_data()
-        return store_index(chunks=chunks)
-    
+    changed_documents = Process_data(path)
+    if changed_documents is None:
+        return None
+    chunks = chunk_data(changed_documents)
+    if not chunks:
+        return None
+    return store_index(chunks=chunks)
 
 
 if __name__ == "__main__":

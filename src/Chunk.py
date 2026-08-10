@@ -129,9 +129,9 @@ def chunk_all( documents: list[list[Document]], chunk_size: int = Config.CHUNK_S
     return [chunk_document(docs, chunk_size, overlap) for docs in documents]
 
 
-def save_chunks_json(chunks: list[list[Chunk]], path: Path) -> None:
+def save_chunks_json(chunks: list[Chunk], path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
-    data = [asdict(c) for pdf_chunks in chunks for c in pdf_chunks]
+    data = [asdict(c) for c in chunks]
     json_path = path / "chunks.json"
     with open(json_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)
@@ -147,14 +147,31 @@ def load_processed(path: Path) -> list[list[Document]]:
     return documents
 
 
-def chunk_data()->list[Chunk]:
-    documents = load_processed(Config.output_dir)
-    chunks = chunk_all(documents)
-    save_chunks_json(chunks, Config.chunks_dir)
-    flatten_chunks = [c for pdf_chunks in chunks for c in pdf_chunks]
-    return flatten_chunks
+def load_chunks(path: Path) -> list[Chunk]:
+    if not path.exists():
+        return []
+    with open(path, "r", encoding="utf-8") as fh:
+        return [Chunk(**d) for d in json.load(fh)]
+
+
+def chunk_data(changed_documents: list[list[Document]]) -> list[Chunk]:
+    if not changed_documents:
+        return []
+
+    changed_sources = {docs[0].source for docs in changed_documents if docs}
+
+    existing_chunks = load_chunks(Config.chunks_dir / "chunks.json")
+    # stale: these files are being re-chunked, so their old chunks no longer apply
+    retained_chunks = [c for c in existing_chunks if c.source not in changed_sources]
+
+    new_chunks_grouped = chunk_all(changed_documents)
+    new_chunks = [c for pdf_chunks in new_chunks_grouped for c in pdf_chunks]
+
+    save_chunks_json(retained_chunks + new_chunks, Config.chunks_dir)
+
+    return new_chunks
 
 
 if __name__ == "__main__":
     Config.configure_logging()
-    chunk_data()
+    chunk_data(load_processed(Config.output_dir))

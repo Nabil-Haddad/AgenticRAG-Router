@@ -1,9 +1,12 @@
 import json
 
 from src.Chunk import (
+    Config,
     chunk_all,
+    chunk_data,
     chunk_document,
     count_tokens,
+    load_chunks,
     save_chunks_json,
     split_into_sentences,
     tag_sentences,
@@ -144,12 +147,13 @@ def test_chunk_all_resets_chunk_index_per_document():
     assert results[1][0].id == "b_chunk_000"
 
 
-# Save_chunks_json 
+# Save_chunks_json
 
 def test_save_chunks_json_writes_combined_file(tmp_path):
     doc_a = [make_doc("Sentence a.", page_num=1, source="a.pdf")]
     doc_b = [make_doc("Sentence b.", page_num=1, source="b.pdf")]
-    chunks = chunk_all([doc_a, doc_b], chunk_size=1000, overlap=0)
+    grouped = chunk_all([doc_a, doc_b], chunk_size=1000, overlap=0)
+    chunks = [c for pdf_chunks in grouped for c in pdf_chunks]
 
     save_chunks_json(chunks, tmp_path)
 
@@ -159,3 +163,59 @@ def test_save_chunks_json_writes_combined_file(tmp_path):
     data = json.loads(output_file.read_text(encoding="utf-8"))
     assert len(data) == 2
     assert {d["source"] for d in data} == {"a.pdf", "b.pdf"}
+
+
+# load_chunks
+
+def test_load_chunks_returns_empty_list_when_missing(tmp_path):
+    assert load_chunks(tmp_path / "chunks.json") == []
+
+
+def test_load_chunks_round_trips_with_save_chunks_json(tmp_path):
+    doc_a = [make_doc("Sentence a.", page_num=1, source="a.pdf")]
+    grouped = chunk_all([doc_a], chunk_size=1000, overlap=0)
+    chunks = [c for pdf_chunks in grouped for c in pdf_chunks]
+
+    save_chunks_json(chunks, tmp_path)
+
+    assert load_chunks(tmp_path / "chunks.json") == chunks
+
+
+# chunk_data
+
+def test_chunk_data_empty_input_returns_empty_list():
+    assert chunk_data([]) == []
+
+
+def test_chunk_data_writes_and_returns_chunks_on_first_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(Config, "chunks_dir", tmp_path)
+
+    doc_a = [make_doc("Sentence a.", page_num=1, source="a.pdf")]
+
+    new_chunks = chunk_data([doc_a])
+
+    assert len(new_chunks) == 1
+    assert new_chunks[0].source == "a.pdf"
+    saved = load_chunks(tmp_path / "chunks.json")
+    assert saved == new_chunks
+
+
+def test_chunk_data_merges_changed_file_without_touching_others(tmp_path, monkeypatch):
+    monkeypatch.setattr(Config, "chunks_dir", tmp_path)
+
+    doc_a = [make_doc("Sentence a.", page_num=1, source="a.pdf")]
+    doc_b = [make_doc("Sentence b.", page_num=1, source="b.pdf")]
+    chunk_data([doc_a, doc_b])  # baseline: both files indexed
+
+    doc_b_changed = [make_doc("Sentence b changed.", page_num=1, source="b.pdf")]
+    new_chunks = chunk_data([doc_b_changed])
+
+    # only the changed file's chunk comes back for (re-)embedding
+    assert len(new_chunks) == 1
+    assert new_chunks[0].source == "b.pdf"
+    assert new_chunks[0].text == "Sentence b changed."
+
+    # but the combined file on disk still has both, a untouched and b updated
+    all_chunks = load_chunks(tmp_path / "chunks.json")
+    sources = {c.source: c.text for c in all_chunks}
+    assert sources == {"a.pdf": "Sentence a.", "b.pdf": "Sentence b changed."}

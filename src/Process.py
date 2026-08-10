@@ -155,7 +155,7 @@ def load_pdf(path: Path)->list[Document]:
     return docs
 
 
-def Process_data(path: Path, extensions: list[str] | None = None) -> bool:
+def Process_data(path: Path, extensions: list[str] | None = None) -> list[list[Document]] | None:
     if extensions is None:
         extensions = [".pdf"]
     documents = []
@@ -176,10 +176,10 @@ def Process_data(path: Path, extensions: list[str] | None = None) -> bool:
         # if every thing is ok , save the documents
     if valid:
         save_pdf_json(new_docs , Config.output_dir)
-        return True
+        return new_docs
     else:
         logger.info("No changes detected in source PDFs; skipping save and reindex.")
-        return False
+        return None
     
         
 
