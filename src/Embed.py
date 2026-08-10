@@ -1,4 +1,7 @@
-from Config import Config
+try:
+    from .Config import Config
+except ImportError:
+    from Config import Config
 from sentence_transformers import SentenceTransformer
 from functools import lru_cache
 import logging

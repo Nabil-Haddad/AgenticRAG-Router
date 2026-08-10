@@ -1,5 +1,5 @@
 import logging
-from Config import Config
+from src.Config import Config
 
 logger = logging.getLogger(__name__)
 

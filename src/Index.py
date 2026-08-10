@@ -1,6 +1,13 @@
-from Config import Config
-from Embed import embed_texts
-from Chunk import Chunk
+try:
+    from .Config import Config
+    from .Embed import embed_texts
+    from .Process import Process_data
+    from .Chunk import Chunk, chunk_data
+except ImportError:
+    from Config import Config
+    from Embed import embed_texts
+    from Process import Process_data
+    from Chunk import Chunk, chunk_data
 from pathlib import Path
 import chromadb
 import logging
@@ -8,13 +15,6 @@ import json
 
 logger = logging.getLogger(__name__)
 
-
-# In this file we need to get the chunked data , embed them and store inside the vectordb
-
-# we need two pimar functions
-# 1 => loads the data and returns an array of chunks 
-# 2 => take the array , extract the text and store it in a seperate array , call the embedding function 
-# store the data + the embeddings in the data base 
 
 
 # Create a collection 
@@ -31,9 +31,7 @@ def load_data(path:Path)->list[Chunk]:
     return docs
 
 
-def build_index(path:Path)-> int :
-    chunks : list[Chunk] = load_data(path)
-
+def store_index(chunks : list[Chunk])-> int :
     if not chunks:
         raise ValueError("No chunks founded")
 
@@ -68,10 +66,16 @@ def build_index(path:Path)-> int :
     return len(chunks)
 
 
+def build_index(path: Path)->int:
+    Process_data(path)
+    chunks = chunk_data()
+    return store_index(chunks=chunks)
+
+
 if __name__ == "__main__":
     Config.configure_logging()
-    path = Config.chunks_dir / "chunks.json"
-    chunks_number = build_index(path=path)
+    chunks_number = build_index(path=Config.data_dir)
     logger.info(f"{chunks_number} have been stored in the database")
+
 
 

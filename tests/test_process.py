@@ -7,10 +7,10 @@ import pytest
 
 from src.Document import Document
 # Import Config through src.Process (not src.Config) so monkeypatching it
-# affects the exact object load_directory reads — src/ is also on the
+# affects the exact object Process_data reads — src/ is also on the
 # import path (see conftest.py), and importing the "same" module via two
 # different names creates two independent module/class instances.
-from src.Process import Config, Validate, load_directory, load_pdf, save_pdf_json
+from src.Process import Config, Validate, Process_data, load_pdf, save_pdf_json
 
 
 def make_doc(content: str, page_num: int = 1, doc_id: str = "d1", source: str = "paper.pdf") -> Document:
@@ -123,15 +123,15 @@ def test_save_pdf_json_writes_one_file_per_pdf(tmp_path):
     assert data_a == [asdict(docs_pdf_a[0])]
 
 
-# load_directory 
+# Process_data 
 
-def test_load_directory_raises_for_missing_dir(tmp_path):
+def test_process_data_raises_for_missing_dir(tmp_path):
     missing_dir = tmp_path / "does_not_exist"
     with pytest.raises(ValueError):
-        load_directory(missing_dir)
+        Process_data(missing_dir)
 
 
-def test_load_directory_processes_only_matching_files(tmp_path, monkeypatch):
+def test_process_data_processes_only_matching_files(tmp_path, monkeypatch):
     output_dir = tmp_path / "out"
     monkeypatch.setattr(Config, "output_dir", output_dir)
 
@@ -141,7 +141,7 @@ def test_load_directory_processes_only_matching_files(tmp_path, monkeypatch):
     (data_dir / "notes.txt").write_text("irrelevant file", encoding="utf-8")
     (data_dir / "subdir").mkdir()
 
-    load_directory(data_dir)
+    Process_data(data_dir)
 
     output_file = output_dir / "paper.json"
     assert output_file.exists()

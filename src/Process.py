@@ -1,6 +1,10 @@
 import logging
-from Config import Config
-from Document import Document
+try:
+    from .Config import Config
+    from .Document import Document
+except ImportError:
+    from Config import Config
+    from Document import Document
 from pathlib import Path
 import fitz
 import json
@@ -82,7 +86,7 @@ def load_pdf(path: Path)->list[Document]:
     return docs
 
 
-def load_directory(path: Path, extensions: list[str] | None = None) -> None:
+def Process_data(path: Path, extensions: list[str] | None = None) -> None:
     if extensions is None:
         extensions = [".pdf"]
     documents = []
@@ -102,7 +106,7 @@ def load_directory(path: Path, extensions: list[str] | None = None) -> None:
 
 
 def main():
-    load_directory(Config.data_dir)
+    Process_data(Config.data_dir)
 
 
 if __name__ == "__main__":

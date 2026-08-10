@@ -6,8 +6,12 @@ from pathlib import Path
 
 import tiktoken
 
-from Config import Config
-from Document import Document
+try:
+    from .Config import Config
+    from .Document import Document
+except ImportError:
+    from Config import Config
+    from Document import Document
 
 logger = logging.getLogger(__name__)
 
@@ -143,12 +147,14 @@ def load_processed(path: Path) -> list[list[Document]]:
     return documents
 
 
-def main():
+def chunk_data()->list[Chunk]:
     documents = load_processed(Config.output_dir)
     chunks = chunk_all(documents)
     save_chunks_json(chunks, Config.chunks_dir)
+    flatten_chunks = [c for pdf_chunks in chunks for c in pdf_chunks]
+    return flatten_chunks
 
 
 if __name__ == "__main__":
     Config.configure_logging()
-    main()
+    chunk_data()
