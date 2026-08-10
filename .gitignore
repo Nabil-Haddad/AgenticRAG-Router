@@ -5,6 +5,7 @@
 Data/raw/*
 Data/processed/*
 Data/chunks/*
+Data/manifest.json
 !Data/raw/.gitkeep
 !Data/processed/.gitkeep
 !Data/chunks/.gitkeep

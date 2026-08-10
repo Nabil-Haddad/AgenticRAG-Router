@@ -8,7 +8,10 @@ logger = logging.getLogger(__name__)
 
 def main():
     chunks_number = build_index(path=Config.data_dir)
-    logger.info(f"{chunks_number} have been stored in the database")
+    if chunks_number is None:
+        logger.info("Nothing to index; data unchanged since the last run.")
+    else:
+        logger.info(f"{chunks_number} have been stored in the database")
 
 
 if __name__ == "__main__":

@@ -18,8 +18,9 @@ class Config:
     data_dir = project_root / "Data" / "raw"
     output_dir = project_root / "Data" / "processed"
 
-    # chunking 
+    # chunking
     chunks_dir = project_root / "Data" / "chunks"
+    manifest_path = project_root / "Data" / "manifest.json"
     CHUNK_SIZE : int = int(os.getenv("CHUNK_SIZE", "400"))      # tokens
     CHUNK_OVERLAP : int = int(os.getenv("CHUNK_OVERLAP", "60")) # tokens
 

@@ -66,16 +66,20 @@ def store_index(chunks : list[Chunk])-> int :
     return len(chunks)
 
 
-def build_index(path: Path)->int:
-    Process_data(path)
-    chunks = chunk_data()
-    return store_index(chunks=chunks)
+def build_index(path: Path)->int | None:
+    if Process_data(path):
+        chunks = chunk_data()
+        return store_index(chunks=chunks)
+    
 
 
 if __name__ == "__main__":
     Config.configure_logging()
     chunks_number = build_index(path=Config.data_dir)
-    logger.info(f"{chunks_number} have been stored in the database")
+    if chunks_number is None:
+        logger.info("Nothing to index; data unchanged since the last run.")
+    else:
+        logger.info(f"{chunks_number} have been stored in the database")
 
 
 

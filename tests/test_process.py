@@ -10,7 +10,17 @@ from src.Document import Document
 # affects the exact object Process_data reads — src/ is also on the
 # import path (see conftest.py), and importing the "same" module via two
 # different names creates two independent module/class instances.
-from src.Process import Config, Validate, Process_data, load_pdf, save_pdf_json
+from src.Process import (
+    Config,
+    Validate,
+    Process_data,
+    hash_string_list,
+    load_manifest,
+    load_pdf,
+    save_manifest,
+    save_pdf_json,
+    verify_data,
+)
 
 
 def make_doc(content: str, page_num: int = 1, doc_id: str = "d1", source: str = "paper.pdf") -> Document:
@@ -134,6 +144,7 @@ def test_process_data_raises_for_missing_dir(tmp_path):
 def test_process_data_processes_only_matching_files(tmp_path, monkeypatch):
     output_dir = tmp_path / "out"
     monkeypatch.setattr(Config, "output_dir", output_dir)
+    monkeypatch.setattr(Config, "manifest_path", tmp_path / "manifest.json")
 
     data_dir = tmp_path / "raw"
     data_dir.mkdir()
@@ -148,3 +159,74 @@ def test_process_data_processes_only_matching_files(tmp_path, monkeypatch):
     data = json.loads(output_file.read_text(encoding="utf-8"))
     assert len(data) == 1
     assert data[0]["source"] == "paper.pdf"
+
+
+# hash_string_list
+
+def test_hash_string_list_is_order_independent():
+    assert hash_string_list(["a", "b", "c"]) == hash_string_list(["c", "a", "b"])
+
+
+def test_hash_string_list_changes_with_content():
+    assert hash_string_list(["a", "b"]) != hash_string_list(["a", "c"])
+
+
+def test_hash_string_list_empty_is_deterministic():
+    assert hash_string_list([]) == hash_string_list([])
+
+
+# load_manifest / save_manifest
+
+def test_load_manifest_returns_none_when_missing(tmp_path):
+    assert load_manifest(tmp_path / "manifest.json") is None
+
+
+def test_load_manifest_returns_none_on_corrupted_json(tmp_path):
+    path = tmp_path / "manifest.json"
+    path.write_text("not valid json", encoding="utf-8")
+
+    assert load_manifest(path) is None
+
+
+def test_save_and_load_manifest_round_trip(tmp_path):
+    path = tmp_path / "manifest.json"
+    manifest = {"schema_version": 1, "hashed_text": "abc123"}
+
+    save_manifest(manifest, path)
+
+    assert load_manifest(path) == manifest
+
+
+# verify_data
+
+def test_verify_data_creates_manifest_on_first_run(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "manifest.json"
+    monkeypatch.setattr(Config, "manifest_path", manifest_path)
+
+    docs = [make_doc("Some content.")]
+
+    assert verify_data(docs) is True
+    assert manifest_path.exists()
+    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert saved["hashed_text"] == hash_string_list(["Some content."])
+
+
+def test_verify_data_skips_when_hash_unchanged(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "manifest.json"
+    monkeypatch.setattr(Config, "manifest_path", manifest_path)
+
+    docs = [make_doc("Some content.")]
+    verify_data(docs)  # first run creates the manifest
+
+    assert verify_data(docs) is False
+
+
+def test_verify_data_reindexes_when_content_changed(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "manifest.json"
+    monkeypatch.setattr(Config, "manifest_path", manifest_path)
+
+    verify_data([make_doc("Original content.")])
+
+    assert verify_data([make_doc("Changed content.")]) is True
+    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert saved["hashed_text"] == hash_string_list(["Changed content."])

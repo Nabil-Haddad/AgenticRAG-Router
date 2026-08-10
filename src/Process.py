@@ -6,12 +6,63 @@ except ImportError:
     from Config import Config
     from Document import Document
 from pathlib import Path
+import hashlib
 import fitz
 import json
 import re
 from dataclasses import asdict
 
 logger = logging.getLogger(__name__)
+
+
+
+def load_manifest(path: Path = Config.manifest_path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, PermissionError) as e:
+        logger.warning(f"Error reading manifest at {path}: {e}")
+        return None
+
+
+def save_manifest(manifest: dict, path: Path = Config.manifest_path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2)
+
+
+def hash_string_list(strings: list[str]) -> str:
+    if not strings:
+        return hashlib.sha256(b"").hexdigest()
+    sorted_strings = sorted(strings)
+    combined_text = "||".join(sorted_strings)
+    return hashlib.sha256(combined_text.encode("utf-8")).hexdigest()
+
+
+def verify_data(docs : list[Document])->bool:
+    manifest = load_manifest(Config.manifest_path)
+    # Extract text from docs
+    text = [d.content for d in docs]
+    new_hash = hash_string_list(text)
+
+    if manifest is not None and manifest.get("hashed_text") == new_hash:
+        logger.info("Stored hash matches new hash. Data hasn't changed. Skipping build.")
+        return False
+
+    save_manifest({
+        "schema_version": 1,
+        "embed_model": Config.EMBED_MODEL_NAME,
+        "chunk_size": Config.CHUNK_SIZE,
+        "chunk_overlap": Config.CHUNK_OVERLAP,
+        "hashed_text": new_hash,
+    }, Config.manifest_path)
+    if manifest is None:
+        logger.info("No manifest found; created a new one and proceeding with indexing.")
+    else:
+        logger.info("Data has changed since the last run; reindexing.")
+    return True
 
 
 
@@ -49,7 +100,9 @@ def Validate(docs: list[Document]) -> list[Document]:
                     metadata = doc.metadata,
                             ))
     return new_documents
-        
+
+
+
                 
 
 def save_pdf_json(docs: list[Document], path: Path)->None:
@@ -86,7 +139,7 @@ def load_pdf(path: Path)->list[Document]:
     return docs
 
 
-def Process_data(path: Path, extensions: list[str] | None = None) -> None:
+def Process_data(path: Path, extensions: list[str] | None = None) -> bool:
     if extensions is None:
         extensions = [".pdf"]
     documents = []
@@ -101,7 +154,16 @@ def Process_data(path: Path, extensions: list[str] | None = None) -> None:
         list_pages = load_pdf(filepath)
         list_pages = Validate(list_pages)
         documents.append(list_pages)
-    save_pdf_json(documents , Config.output_dir)
+    # until here we would have our clean pdf's
+    flat_documents = [doc for pdf_docs in documents for doc in pdf_docs]
+    if verify_data(flat_documents):
+        # if every thing is ok , save the documents
+        save_pdf_json(documents , Config.output_dir)
+        return True
+    else:
+        logger.info("No changes detected in source PDFs; skipping save and reindex.")
+        return False
+    
         
 
 
