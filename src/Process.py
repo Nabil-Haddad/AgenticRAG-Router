@@ -41,28 +41,46 @@ def hash_string_list(strings: list[str]) -> str:
     return hashlib.sha256(combined_text.encode("utf-8")).hexdigest()
 
 
-def verify_data(docs : list[Document])->bool:
+# returns (bool, list[list[Document]] | None):
+# if we have the same data we return (False, None)
+# if we have completely new data we return (True, docs)
+# if we have partial new data we return (True, only the changed/new pdfs)
+def verify_data(documents: list[list[Document]]) -> tuple[bool, list[list[Document]] | None]:
     manifest = load_manifest(Config.manifest_path)
-    # Extract text from docs
-    text = [d.content for d in docs]
-    new_hash = hash_string_list(text)
+    stored_files = manifest.get("files", {}) if manifest is not None else {}
 
-    if manifest is not None and manifest.get("hashed_text") == new_hash:
-        logger.info("Stored hash matches new hash. Data hasn't changed. Skipping build.")
-        return False
+    # hash each pdf's pages on their own, so we can tell which specific
+    # files are new/changed instead of only "something in the corpus changed"
+    new_files: dict[str, str] = {}
+    changed_documents: list[list[Document]] = []
+    for pdf_docs in documents:
+        if not pdf_docs:
+            continue
+        source = pdf_docs[0].source
+        file_hash = hash_string_list([d.content for d in pdf_docs])
+        new_files[source] = file_hash
+        if stored_files.get(source) != file_hash:
+            changed_documents.append(pdf_docs)
+
+    if not changed_documents:
+        logger.info("All files match the stored manifest. Data hasn't changed. Skipping build.")
+        return False, None
 
     save_manifest({
         "schema_version": 1,
         "embed_model": Config.EMBED_MODEL_NAME,
         "chunk_size": Config.CHUNK_SIZE,
         "chunk_overlap": Config.CHUNK_OVERLAP,
-        "hashed_text": new_hash,
+        "files": new_files,
     }, Config.manifest_path)
+
     if manifest is None:
-        logger.info("No manifest found; created a new one and proceeding with indexing.")
+        logger.info("No manifest found; indexing all files for the first time.")
     else:
-        logger.info("Data has changed since the last run; reindexing.")
-    return True
+        changed_sources = [pdf_docs[0].source for pdf_docs in changed_documents]
+        logger.info(f"{len(changed_documents)} file(s) new or changed: {changed_sources}")
+
+    return True, changed_documents
 
 
 
@@ -100,8 +118,6 @@ def Validate(docs: list[Document]) -> list[Document]:
                     metadata = doc.metadata,
                             ))
     return new_documents
-
-
 
                 
 
@@ -155,10 +171,11 @@ def Process_data(path: Path, extensions: list[str] | None = None) -> bool:
         list_pages = Validate(list_pages)
         documents.append(list_pages)
     # until here we would have our clean pdf's
-    flat_documents = [doc for pdf_docs in documents for doc in pdf_docs]
-    if verify_data(flat_documents):
+    # now we deal with every case
+    valid , new_docs = verify_data(documents)
         # if every thing is ok , save the documents
-        save_pdf_json(documents , Config.output_dir)
+    if valid:
+        save_pdf_json(new_docs , Config.output_dir)
         return True
     else:
         logger.info("No changes detected in source PDFs; skipping save and reindex.")

@@ -199,34 +199,58 @@ def test_save_and_load_manifest_round_trip(tmp_path):
 
 # verify_data
 
-def test_verify_data_creates_manifest_on_first_run(tmp_path, monkeypatch):
+def test_verify_data_returns_all_pdfs_on_first_run(tmp_path, monkeypatch):
     manifest_path = tmp_path / "manifest.json"
     monkeypatch.setattr(Config, "manifest_path", manifest_path)
 
-    docs = [make_doc("Some content.")]
+    pdf_a = [make_doc("Content A.", source="a.pdf")]
+    pdf_b = [make_doc("Content B.", source="b.pdf")]
 
-    assert verify_data(docs) is True
-    assert manifest_path.exists()
+    valid, new_docs = verify_data([pdf_a, pdf_b])
+
+    assert valid is True
+    assert new_docs == [pdf_a, pdf_b]
     saved = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert saved["hashed_text"] == hash_string_list(["Some content."])
+    assert set(saved["files"]) == {"a.pdf", "b.pdf"}
 
 
-def test_verify_data_skips_when_hash_unchanged(tmp_path, monkeypatch):
+def test_verify_data_skips_when_nothing_changed(tmp_path, monkeypatch):
     manifest_path = tmp_path / "manifest.json"
     monkeypatch.setattr(Config, "manifest_path", manifest_path)
 
-    docs = [make_doc("Some content.")]
-    verify_data(docs)  # first run creates the manifest
+    pdf_a = [make_doc("Content A.", source="a.pdf")]
+    verify_data([pdf_a])  # first run creates the manifest
 
-    assert verify_data(docs) is False
+    valid, new_docs = verify_data([pdf_a])
+
+    assert valid is False
+    assert new_docs is None
 
 
-def test_verify_data_reindexes_when_content_changed(tmp_path, monkeypatch):
+def test_verify_data_returns_only_the_changed_file(tmp_path, monkeypatch):
     manifest_path = tmp_path / "manifest.json"
     monkeypatch.setattr(Config, "manifest_path", manifest_path)
 
-    verify_data([make_doc("Original content.")])
+    pdf_a = [make_doc("Content A.", source="a.pdf")]
+    pdf_b = [make_doc("Content B.", source="b.pdf")]
+    verify_data([pdf_a, pdf_b])  # first run, both saved as unchanged baseline
 
-    assert verify_data([make_doc("Changed content.")]) is True
-    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert saved["hashed_text"] == hash_string_list(["Changed content."])
+    pdf_b_changed = [make_doc("Content B changed.", source="b.pdf")]
+    valid, new_docs = verify_data([pdf_a, pdf_b_changed])
+
+    assert valid is True
+    assert new_docs == [pdf_b_changed]
+
+
+def test_verify_data_returns_only_the_newly_added_file(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "manifest.json"
+    monkeypatch.setattr(Config, "manifest_path", manifest_path)
+
+    pdf_a = [make_doc("Content A.", source="a.pdf")]
+    verify_data([pdf_a])  # first run
+
+    pdf_b = [make_doc("Content B.", source="b.pdf")]
+    valid, new_docs = verify_data([pdf_a, pdf_b])
+
+    assert valid is True
+    assert new_docs == [pdf_b]
