@@ -8,6 +8,8 @@ except ImportError:
     from Embed import embed_texts
 import logging
 
+logger = logging.getLogger(__name__)
+
 # create 3 different function cosign_simularity , mb25_search , search_hypbrid_rrf
 
 def peek_first_5_elements()->None:
@@ -47,9 +49,6 @@ def cosign_simularity(query : str, top_k : int = 5 )->list[dict]:
     ]
 
     
-
-
-
 
     
 def bm25_search()->list[Chunk]:
