@@ -40,6 +40,27 @@ def test_split_into_sentences_empty_text():
     assert split_into_sentences("   ") == []
 
 
+def test_split_into_sentences_does_not_split_on_narrative_citation():
+    text = "Wu et al. (2023) introduce fine-grained RLHF with multiple reward models."
+    assert split_into_sentences(text) == [text]
+
+
+def test_split_into_sentences_merges_multiple_chained_abbreviations():
+    text = "See Fig. 3 for details. Also refer to Eq. 5 for the derivation."
+    assert split_into_sentences(text) == [
+        "See Fig. 3 for details.",
+        "Also refer to Eq. 5 for the derivation.",
+    ]
+
+
+def test_split_into_sentences_still_splits_real_sentence_boundaries():
+    text = "Wu et al. (2023) introduce fine-grained RLHF. This is a new sentence."
+    assert split_into_sentences(text) == [
+        "Wu et al. (2023) introduce fine-grained RLHF.",
+        "This is a new sentence.",
+    ]
+
+
 # Tag_sentences
 
 def test_tag_sentences_preserves_order_and_page_numbers():

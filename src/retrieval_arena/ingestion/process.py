@@ -6,6 +6,7 @@ import hashlib
 import pymupdf as fitz
 import json
 import re
+from collections import Counter
 from dataclasses import asdict
 
 logger = logging.getLogger(__name__)
@@ -170,6 +171,45 @@ def load_pdf(path: Path)->list[Document]:
     return docs
 
 
+RUNNING_HEADER_THRESHOLD = 0.5  # fraction of a PDF's pages that must share a leading token
+
+
+def _strip_running_header(docs: list[Document]) -> list[Document]:
+    # some PDFs print a running header on every page (e.g. "Preprint."),
+    # which PyMuPDF extracts as if it were the start of the page's body
+    # text; detect it per-PDF instead of hardcoding a specific string,
+    # since not every source PDF has one
+    if len(docs) < 4:
+        return docs
+
+    def leading_token(text: str) -> str | None:
+        match = re.match(r"^(\S+\.)\s+", text)
+        return match.group(1) if match else None
+
+    tokens = [leading_token(d.content) for d in docs]
+    counts = Counter(t for t in tokens if t)
+    if not counts:
+        return docs
+
+    header, header_count = counts.most_common(1)[0]
+    if header_count / len(docs) < RUNNING_HEADER_THRESHOLD:
+        return docs
+
+    stripped: list[Document] = []
+    for doc, token in zip(docs, tokens):
+        if token != header:
+            stripped.append(doc)
+            continue
+        stripped.append(Document(
+            id=doc.id,
+            content=doc.content[len(header):].lstrip(),
+            source=doc.source,
+            page_num=doc.page_num,
+            metadata=doc.metadata,
+        ))
+    return stripped
+
+
 def Process_data(path: Path, extensions: list[str] | None = None) -> list[list[Document]] | None:
     if extensions is None:
         extensions = [".pdf"]
@@ -183,6 +223,7 @@ def Process_data(path: Path, extensions: list[str] | None = None) -> list[list[D
         if not filepath.is_file():
             continue
         list_pages = load_pdf(filepath)
+        list_pages = _strip_running_header(list_pages)
         list_pages = Validate(list_pages)
         documents.append(list_pages)
     # until here we would have our clean pdf's

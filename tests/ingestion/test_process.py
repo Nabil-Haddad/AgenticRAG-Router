@@ -11,6 +11,7 @@ from src.retrieval_arena.ingestion.process import (
     Validate,
     Process_data,
     _clean_extracted_text,
+    _strip_running_header,
     hash_string_list,
     load_manifest,
     load_pdf,
@@ -85,6 +86,68 @@ def test_clean_extracted_text_preserves_real_hyphenated_words():
 
 def test_clean_extracted_text_collapses_repeated_whitespace():
     assert _clean_extracted_text("a   b\t\tc\n\nd") == "a b c d"
+
+
+# _strip_running_header
+
+def test_strip_running_header_removes_token_shared_by_most_pages():
+    docs = [
+        make_doc("Preprint. Real content on page one.", page_num=1),
+        make_doc("Preprint. Real content on page two.", page_num=2),
+        make_doc("Preprint. Real content on page three.", page_num=3),
+        make_doc("No header here, different content.", page_num=4),
+    ]
+
+    result = _strip_running_header(docs)
+
+    assert [d.content for d in result] == [
+        "Real content on page one.",
+        "Real content on page two.",
+        "Real content on page three.",
+        "No header here, different content.",
+    ]
+    # non-content fields are preserved
+    assert result[0].id == docs[0].id
+    assert result[0].page_num == 1
+
+
+def test_strip_running_header_leaves_content_unchanged_when_no_repeated_token():
+    docs = [
+        make_doc("First page starts differently.", page_num=1),
+        make_doc("Second page also differs.", page_num=2),
+        make_doc("Third page too.", page_num=3),
+        make_doc("Fourth page as well.", page_num=4),
+    ]
+
+    result = _strip_running_header(docs)
+
+    assert [d.content for d in result] == [d.content for d in docs]
+
+
+def test_strip_running_header_requires_majority_of_pages():
+    # only 1 of 4 pages shares the leading token - below the 50% threshold
+    docs = [
+        make_doc("Preprint. Only this page has it.", page_num=1),
+        make_doc("Nothing shared here.", page_num=2),
+        make_doc("Nor here either.", page_num=3),
+        make_doc("Still nothing in common.", page_num=4),
+    ]
+
+    result = _strip_running_header(docs)
+
+    assert result[0].content == "Preprint. Only this page has it."
+
+
+def test_strip_running_header_skips_short_document():
+    # fewer than 4 pages - not enough evidence to call something a running header
+    docs = [
+        make_doc("Preprint. Page one.", page_num=1),
+        make_doc("Preprint. Page two.", page_num=2),
+    ]
+
+    result = _strip_running_header(docs)
+
+    assert [d.content for d in result] == [d.content for d in docs]
 
 
 #  Validate

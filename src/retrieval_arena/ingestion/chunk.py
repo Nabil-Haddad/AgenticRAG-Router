@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 ENCODING = tiktoken.get_encoding("cl100k_base")
 SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
 
+# the splitter above treats any ". " as a sentence end, which false-positives
+# on abbreviations common in academic text (especially narrative citations
+# like "Wu et al. (2023)") - pieces ending in one of these get merged back
+# onto the next piece instead of standing alone as a "sentence"
+ABBREVIATIONS = ("et al.", "e.g.", "i.e.", "cf.", "vs.", "Fig.", "Eq.", "etc.")
+
 
 @dataclass
 class Chunk:
@@ -31,8 +37,17 @@ def count_tokens(text: str) -> int:
 
 
 def split_into_sentences(text: str) -> list[str]:
-    sentences = SENTENCE_SPLIT_PATTERN.split(text.strip())
-    return [s.strip() for s in sentences if s.strip()]
+    pieces = SENTENCE_SPLIT_PATTERN.split(text.strip())
+    sentences: list[str] = []
+    for piece in pieces:
+        piece = piece.strip()
+        if not piece:
+            continue
+        if sentences and sentences[-1].endswith(ABBREVIATIONS):
+            sentences[-1] = f"{sentences[-1]} {piece}"
+        else:
+            sentences.append(piece)
+    return sentences
 
 
 def tag_sentences(docs: list[Document]) -> list[tuple[str, int]]:
