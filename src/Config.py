@@ -27,11 +27,13 @@ class Config:
     # models
     EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
 
-    # vector db 
+    # vector db
     VECTORDB_DIR = project_root / "vectordb"
     COLLECTION_NAME = "chunks"
 
-
+    # retrieval
+    RETRIEVAL_METHOD: str = os.getenv("RETRIEVAL_METHOD", "hybrid")
+    
     
     IS_PRODUCTION : bool = os.getenv("ENVIRONMENT", "development") == "production"
 

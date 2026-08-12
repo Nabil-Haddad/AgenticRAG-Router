@@ -9,6 +9,7 @@ except ImportError:
     from Embed import embed_texts
     from Config import Config
 import logging
+import sys
 from pathlib import Path
 import numpy as np
 from rank_bm25 import BM25Okapi
@@ -123,9 +124,27 @@ def search_hybrid_rrf(query: str, top_k: int = 5, candidate_k: int = 20, k: int 
     return [{"idx": idx, "text": texts[idx], "score": score} for idx, score in ranked]
 
 
-def main()->None:
-    pass
+# single entry point for callers outside this module 
+_RETRIEVAL_METHODS = {
+    "hybrid": search_hybrid_rrf,
+    "bm25": bm25_search,
+    "vector": cosign_simularity,
+}
+
+
+def retrieve(query: str, method: str | None = None, top_k: int = 5, **kwargs) -> list[dict]:
+    if method is None:
+        method = Config.RETRIEVAL_METHOD
+
+    search_fn = _RETRIEVAL_METHODS.get(method)
+    if search_fn is None:
+        raise ValueError(f"Unknown retrieval method {method!r}, choose from {sorted(_RETRIEVAL_METHODS)}")
+
+    return search_fn(query, top_k=top_k, **kwargs)
 
 
 if __name__ == "__main__":
-    main()
+    Config.configure_logging()
+    demo_query = " ".join(sys.argv[1:]) or "what is retrieval augmented generation"
+    for result in retrieve(demo_query):
+        print(f"{result['idx']}  {result['score']:.4f}  {result['text'][:80]}")
