@@ -1,13 +1,7 @@
-try:
-    from .Index import get_collection
-    from .Chunk import Chunk, load_chunks
-    from .Embed import embed_texts
-    from .Config import Config
-except ImportError:
-    from Index import get_collection
-    from Chunk import Chunk, load_chunks
-    from Embed import embed_texts
-    from Config import Config
+from ..index.index import get_collection
+from ..ingestion.chunk import Chunk, load_chunks
+from ..ingestion.embed import embed_texts
+from ..config import Config
 import logging
 import sys
 from pathlib import Path

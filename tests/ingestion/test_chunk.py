@@ -1,7 +1,7 @@
 import json
 
-from src.Chunk import (
-    Config,
+from src.retrieval_arena.config import Config
+from src.retrieval_arena.ingestion.chunk import (
     chunk_all,
     chunk_data,
     chunk_document,
@@ -11,7 +11,7 @@ from src.Chunk import (
     split_into_sentences,
     tag_sentences,
 )
-from src.Document import Document
+from src.retrieval_arena.ingestion.document import Document
 
 
 def make_doc(content: str, page_num: int, source: str = "paper.pdf") -> Document:

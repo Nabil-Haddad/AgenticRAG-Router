@@ -1,9 +1,5 @@
-try:
-    from .Index import get_collection
-    from .Config import Config
-except ImportError:
-    from Index import get_collection
-    from Config import Config
+from src.retrieval_arena.index.index import get_collection
+from src.retrieval_arena.config import Config
 from pathlib import Path
 import json
 import logging

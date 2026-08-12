@@ -1,6 +1,6 @@
 import logging
-from src.Config import Config
-from src.Index import build_index
+from src.retrieval_arena.config import Config
+from src.retrieval_arena.index.index import build_index
 
 logger = logging.getLogger(__name__)
 

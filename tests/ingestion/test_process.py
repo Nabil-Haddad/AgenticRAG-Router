@@ -5,13 +5,9 @@ from pathlib import Path
 import fitz
 import pytest
 
-from src.Document import Document
-# Import Config through src.Process (not src.Config) so monkeypatching it
-# affects the exact object Process_data reads — src/ is also on the
-# import path (see conftest.py), and importing the "same" module via two
-# different names creates two independent module/class instances.
-from src.Process import (
-    Config,
+from src.retrieval_arena.config import Config
+from src.retrieval_arena.ingestion.document import Document
+from src.retrieval_arena.ingestion.process import (
     Validate,
     Process_data,
     hash_string_list,

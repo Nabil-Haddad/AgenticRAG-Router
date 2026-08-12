@@ -1,10 +1,6 @@
 import logging
-try:
-    from .Config import Config
-    from .Document import Document
-except ImportError:
-    from Config import Config
-    from Document import Document
+from ..config import Config
+from .document import Document
 from pathlib import Path
 import hashlib
 import fitz

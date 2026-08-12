@@ -1,4 +1,4 @@
-from src.Document import Document
+from src.retrieval_arena.ingestion.document import Document
 
 
 def test_document_holds_all_fields():

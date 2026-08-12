@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
 
-# src/ modules import their siblings as top-level (e.g. `from Config import Config`),
-# which only works if src/ itself is on the import path.
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+# ensures `import src...` resolves regardless of how pytest is invoked
+# (bare `pytest`, `python -m pytest`, or from a different cwd)
+sys.path.insert(0, str(Path(__file__).resolve().parent))

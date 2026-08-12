@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from src.Index import Chunk, Config, build_index, get_collection, load_data, store_index
+from src.retrieval_arena.config import Config
+from src.retrieval_arena.ingestion.chunk import Chunk
+from src.retrieval_arena.index.index import build_index, get_collection, load_data, store_index
 
 
 def write_chunks_json(path: Path, chunks: list[dict]) -> None:
@@ -59,7 +61,7 @@ def test_load_data_reads_chunks_from_json(tmp_path):
 # get_collection
 
 def test_get_collection_uses_configured_path_and_name(mocker):
-    mock_client_cls = mocker.patch("src.Index.chromadb.PersistentClient")
+    mock_client_cls = mocker.patch("src.retrieval_arena.index.index.chromadb.PersistentClient")
     mock_client = mock_client_cls.return_value
 
     collection = get_collection()
@@ -82,8 +84,8 @@ def test_store_index_embeds_and_stores_chunks(mocker):
         make_chunk("c2", "second chunk", source="a.pdf", page_start=2, page_end=2, token_count=7, metadata={"hard_split": True}),
     ]
 
-    mock_embed = mocker.patch("src.Index.embed_texts", return_value=[[0.1, 0.2], [0.3, 0.4]])
-    mock_client_cls = mocker.patch("src.Index.chromadb.PersistentClient")
+    mock_embed = mocker.patch("src.retrieval_arena.index.index.embed_texts", return_value=[[0.1, 0.2], [0.3, 0.4]])
+    mock_client_cls = mocker.patch("src.retrieval_arena.index.index.chromadb.PersistentClient")
     mock_client = mock_client_cls.return_value
     mock_collection = mock_client.get_or_create_collection.return_value
 
@@ -110,8 +112,8 @@ def test_store_index_deletes_only_the_changed_sources(mocker):
         make_chunk("c2", "chunk from b", source="b.pdf"),
     ]
 
-    mocker.patch("src.Index.embed_texts", return_value=[[0.1], [0.2]])
-    mock_client_cls = mocker.patch("src.Index.chromadb.PersistentClient")
+    mocker.patch("src.retrieval_arena.index.index.embed_texts", return_value=[[0.1], [0.2]])
+    mock_client_cls = mocker.patch("src.retrieval_arena.index.index.chromadb.PersistentClient")
     mock_collection = mock_client_cls.return_value.get_or_create_collection.return_value
 
     store_index(chunks)
@@ -125,9 +127,9 @@ def test_build_index_orchestrates_the_pipeline_in_order(tmp_path, mocker):
     fake_changed_docs = [["sentinel-doc-group"]]
     fake_chunks = [make_chunk("c1", "text one")]
 
-    mock_process = mocker.patch("src.Index.Process_data", return_value=fake_changed_docs)
-    mock_chunk_data = mocker.patch("src.Index.chunk_data", return_value=fake_chunks)
-    mock_store = mocker.patch("src.Index.store_index", return_value=1)
+    mock_process = mocker.patch("src.retrieval_arena.index.index.Process_data", return_value=fake_changed_docs)
+    mock_chunk_data = mocker.patch("src.retrieval_arena.index.index.chunk_data", return_value=fake_chunks)
+    mock_store = mocker.patch("src.retrieval_arena.index.index.store_index", return_value=1)
 
     result = build_index(tmp_path)
 
@@ -138,9 +140,9 @@ def test_build_index_orchestrates_the_pipeline_in_order(tmp_path, mocker):
 
 
 def test_build_index_skips_when_nothing_changed(tmp_path, mocker):
-    mock_process = mocker.patch("src.Index.Process_data", return_value=None)
-    mock_chunk_data = mocker.patch("src.Index.chunk_data")
-    mock_store = mocker.patch("src.Index.store_index")
+    mock_process = mocker.patch("src.retrieval_arena.index.index.Process_data", return_value=None)
+    mock_chunk_data = mocker.patch("src.retrieval_arena.index.index.chunk_data")
+    mock_store = mocker.patch("src.retrieval_arena.index.index.store_index")
 
     result = build_index(tmp_path)
 
@@ -151,9 +153,9 @@ def test_build_index_skips_when_nothing_changed(tmp_path, mocker):
 
 
 def test_build_index_skips_storing_when_no_chunks_produced(tmp_path, mocker):
-    mocker.patch("src.Index.Process_data", return_value=[["sentinel-doc-group"]])
-    mocker.patch("src.Index.chunk_data", return_value=[])
-    mock_store = mocker.patch("src.Index.store_index")
+    mocker.patch("src.retrieval_arena.index.index.Process_data", return_value=[["sentinel-doc-group"]])
+    mocker.patch("src.retrieval_arena.index.index.chunk_data", return_value=[])
+    mock_store = mocker.patch("src.retrieval_arena.index.index.store_index")
 
     result = build_index(tmp_path)
 

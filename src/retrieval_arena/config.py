@@ -14,7 +14,7 @@ class Config:
     LOG_LEVEL : str = os.getenv("LOG_LEVEL", "INFO")
 
     # paths
-    project_root = Path(__file__).resolve().parent.parent
+    project_root = Path(__file__).resolve().parent.parent.parent
     data_dir = project_root / "Data" / "raw"
     output_dir = project_root / "Data" / "processed"
 

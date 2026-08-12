@@ -3,9 +3,9 @@ import os
 
 import pytest
 
-import src.retrieve as retrieve
-from src.Config import Config
-from src.retrieve import bm25_search, cosign_simularity, peek_first_5_elements, search_hybrid_rrf
+import src.retrieval_arena.retrieval.retrieve as retrieve
+from src.retrieval_arena.config import Config
+from src.retrieval_arena.retrieval.retrieve import bm25_search, cosign_simularity, peek_first_5_elements, search_hybrid_rrf
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +39,7 @@ def test_peek_prints_samples_on_success(mocker, capsys):
         "ids": ["c1", "c2"],
         "documents": ["first document text", "second document text"],
     }
-    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.get_collection", return_value=fake_collection)
 
     result = peek_first_5_elements()
 
@@ -55,7 +55,7 @@ def test_peek_prints_samples_on_success(mocker, capsys):
 def test_peek_handles_failure_without_crashing(mocker, capsys):
     fake_collection = mocker.MagicMock()
     fake_collection.peek.side_effect = Exception("simulated connection failure")
-    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.get_collection", return_value=fake_collection)
 
     result = peek_first_5_elements()
 
@@ -74,8 +74,8 @@ def test_cosign_simularity_embeds_query_and_returns_results(mocker):
         "documents": [["text one", "text two"]],
         "distances": [[0.1, 0.2]],
     }
-    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
-    mock_embed = mocker.patch("src.retrieve.embed_texts", return_value=[[0.5, 0.6]])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.get_collection", return_value=fake_collection)
+    mock_embed = mocker.patch("src.retrieval_arena.retrieval.retrieve.embed_texts", return_value=[[0.5, 0.6]])
 
     results = cosign_simularity("what is RAG?", top_k=2)
 
@@ -93,8 +93,8 @@ def test_cosign_simularity_embeds_query_and_returns_results(mocker):
 def test_cosign_simularity_defaults_top_k_to_5(mocker):
     fake_collection = mocker.MagicMock()
     fake_collection.query.return_value = {"ids": [[]], "documents": [[]], "distances": [[]]}
-    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
-    mocker.patch("src.retrieve.embed_texts", return_value=[[0.1]])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.get_collection", return_value=fake_collection)
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.embed_texts", return_value=[[0.1]])
 
     cosign_simularity("a query")
 
@@ -107,8 +107,8 @@ def test_cosign_simularity_defaults_top_k_to_5(mocker):
 def test_cosign_simularity_returns_empty_list_on_failure(mocker):
     fake_collection = mocker.MagicMock()
     fake_collection.query.side_effect = Exception("simulated connection failure")
-    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
-    mocker.patch("src.retrieve.embed_texts", return_value=[[0.1]])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.get_collection", return_value=fake_collection)
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.embed_texts", return_value=[[0.1]])
 
     assert cosign_simularity("a query") == []
 
@@ -203,7 +203,7 @@ def test_bm25_search_rebuilds_index_when_file_changes(tmp_path, mocker):
 def test_bm25_search_returns_empty_list_on_unexpected_error(tmp_path, mocker, capsys):
     path = tmp_path / "chunks.json"
     write_chunks(path, [make_chunk_dict("c1", "hello world")])
-    mocker.patch("src.retrieve._get_bm25_index", side_effect=Exception("simulated failure"))
+    mocker.patch("src.retrieval_arena.retrieval.retrieve._get_bm25_index", side_effect=Exception("simulated failure"))
 
     results = bm25_search("hello", path=path)
 
@@ -216,11 +216,11 @@ def test_bm25_search_returns_empty_list_on_unexpected_error(tmp_path, mocker, ca
 # search_hybrid_rrf
 
 def test_search_hybrid_rrf_ranks_chunks_in_both_rankings_highest(mocker):
-    mocker.patch("src.retrieve.bm25_search", return_value=[
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.bm25_search", return_value=[
         {"idx": "c1", "text": "chunk one", "score": 5.0},
         {"idx": "c2", "text": "chunk two", "score": 3.0},
     ])
-    mocker.patch("src.retrieve.cosign_simularity", return_value=[
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.cosign_simularity", return_value=[
         {"idx": "c2", "text": "chunk two", "score": 0.1},
         {"idx": "c3", "text": "chunk three", "score": 0.2},
     ])
@@ -233,10 +233,10 @@ def test_search_hybrid_rrf_ranks_chunks_in_both_rankings_highest(mocker):
 
 
 def test_search_hybrid_rrf_respects_top_k(mocker):
-    mocker.patch("src.retrieve.bm25_search", return_value=[
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.bm25_search", return_value=[
         {"idx": f"c{i}", "text": f"text {i}", "score": 1.0} for i in range(5)
     ])
-    mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.cosign_simularity", return_value=[])
 
     results = search_hybrid_rrf("query", top_k=2)
 
@@ -244,8 +244,8 @@ def test_search_hybrid_rrf_respects_top_k(mocker):
 
 
 def test_search_hybrid_rrf_passes_candidate_k_to_both_backends(mocker):
-    bm25_mock = mocker.patch("src.retrieve.bm25_search", return_value=[])
-    vector_mock = mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+    bm25_mock = mocker.patch("src.retrieval_arena.retrieval.retrieve.bm25_search", return_value=[])
+    vector_mock = mocker.patch("src.retrieval_arena.retrieval.retrieve.cosign_simularity", return_value=[])
 
     search_hybrid_rrf("query", top_k=5, candidate_k=15)
 
@@ -254,15 +254,15 @@ def test_search_hybrid_rrf_passes_candidate_k_to_both_backends(mocker):
 
 
 def test_search_hybrid_rrf_returns_empty_list_when_both_backends_empty(mocker):
-    mocker.patch("src.retrieve.bm25_search", return_value=[])
-    mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.bm25_search", return_value=[])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.cosign_simularity", return_value=[])
 
     assert search_hybrid_rrf("query") == []
 
 
 def test_search_hybrid_rrf_result_shape_and_score_formula(mocker):
-    mocker.patch("src.retrieve.bm25_search", return_value=[{"idx": "c1", "text": "hello", "score": 1.0}])
-    mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.bm25_search", return_value=[{"idx": "c1", "text": "hello", "score": 1.0}])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.cosign_simularity", return_value=[])
 
     results = search_hybrid_rrf("query", top_k=1)
 
@@ -270,8 +270,8 @@ def test_search_hybrid_rrf_result_shape_and_score_formula(mocker):
 
 
 def test_search_hybrid_rrf_k_parameter_changes_score_weighting(mocker):
-    mocker.patch("src.retrieve.bm25_search", return_value=[{"idx": "c1", "text": "hello", "score": 1.0}])
-    mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.bm25_search", return_value=[{"idx": "c1", "text": "hello", "score": 1.0}])
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.cosign_simularity", return_value=[])
 
     results = search_hybrid_rrf("query", top_k=1, k=10)
 

@@ -1,13 +1,7 @@
-try:
-    from .Config import Config
-    from .Embed import embed_texts
-    from .Process import Process_data
-    from .Chunk import Chunk, chunk_data
-except ImportError:
-    from Config import Config
-    from Embed import embed_texts
-    from Process import Process_data
-    from Chunk import Chunk, chunk_data
+from ..config import Config
+from ..ingestion.embed import embed_texts
+from ..ingestion.process import Process_data
+from ..ingestion.chunk import Chunk, chunk_data
 from pathlib import Path
 import chromadb
 import logging

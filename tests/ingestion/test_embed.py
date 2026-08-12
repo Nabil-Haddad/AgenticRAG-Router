@@ -1,6 +1,7 @@
 import pytest
 
-from src.Embed import Config, embed_texts, get_model
+from src.retrieval_arena.config import Config
+from src.retrieval_arena.ingestion.embed import embed_texts, get_model
 
 
 @pytest.fixture(autouse=True)
@@ -15,7 +16,7 @@ def clear_model_cache():
 # get_model 
 
 def test_get_model_constructs_with_default_name(mocker):
-    mock_cls = mocker.patch("src.Embed.SentenceTransformer")
+    mock_cls = mocker.patch("src.retrieval_arena.ingestion.embed.SentenceTransformer")
 
     get_model()
 
@@ -23,7 +24,7 @@ def test_get_model_constructs_with_default_name(mocker):
 
 
 def test_get_model_accepts_custom_name(mocker):
-    mock_cls = mocker.patch("src.Embed.SentenceTransformer")
+    mock_cls = mocker.patch("src.retrieval_arena.ingestion.embed.SentenceTransformer")
 
     get_model("custom-model-name")
 
@@ -31,7 +32,7 @@ def test_get_model_accepts_custom_name(mocker):
 
 
 def test_get_model_caches_result(mocker):
-    mock_cls = mocker.patch("src.Embed.SentenceTransformer")
+    mock_cls = mocker.patch("src.retrieval_arena.ingestion.embed.SentenceTransformer")
 
     first = get_model()
     second = get_model()
@@ -45,7 +46,7 @@ def test_get_model_caches_result(mocker):
 def test_embed_texts_passes_texts_and_show_progress_bar(mocker):
     fake_model = mocker.MagicMock()
     fake_model.encode.return_value.tolist.return_value = [[0.1, 0.2], [0.3, 0.4]]
-    mocker.patch("src.Embed.get_model", return_value=fake_model)
+    mocker.patch("src.retrieval_arena.ingestion.embed.get_model", return_value=fake_model)
 
     result = embed_texts(["a", "b"], show_progress_bar=True)
 
@@ -56,7 +57,7 @@ def test_embed_texts_passes_texts_and_show_progress_bar(mocker):
 def test_embed_texts_defaults_show_progress_bar_to_false(mocker):
     fake_model = mocker.MagicMock()
     fake_model.encode.return_value.tolist.return_value = []
-    mocker.patch("src.Embed.get_model", return_value=fake_model)
+    mocker.patch("src.retrieval_arena.ingestion.embed.get_model", return_value=fake_model)
 
     embed_texts(["a"])
 
