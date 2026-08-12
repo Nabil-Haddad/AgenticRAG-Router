@@ -1,7 +1,13 @@
 import logging
 import os
+import warnings
 from pathlib import Path
 from dotenv import load_dotenv
+
+# noisy third-party loggers that shouldn't drown out the app's own output
+# at the default log level - set before any of these libraries are imported
+# elsewhere, since huggingface_hub reads this env var once at import time
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 
 load_dotenv()
@@ -39,10 +45,19 @@ class Config:
 
     @classmethod
     def configure_logging(cls) -> None:
+        level = getattr(logging, cls.LOG_LEVEL.upper(), logging.INFO)
         logging.basicConfig(
-            level=getattr(logging, cls.LOG_LEVEL.upper(), logging.INFO),
+            level=level,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         )
+
+        # keep vendor request/progress chatter out of normal output; LOG_LEVEL=DEBUG
+        # still surfaces it, since that's an explicit ask to see everything
+        if level > logging.DEBUG:
+            for noisy_logger in ("httpx", "httpcore", "huggingface_hub", "urllib3", "filelock"):
+                logging.getLogger(noisy_logger).setLevel(logging.ERROR)
+            warnings.filterwarnings("ignore", message=".*unauthenticated requests.*")
+            warnings.filterwarnings("ignore", message=".*CUDA initialization.*")
 
     @classmethod
     def validate(cls)-> None:

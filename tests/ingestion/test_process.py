@@ -2,7 +2,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 import pytest
 
 from src.retrieval_arena.config import Config
@@ -10,6 +10,7 @@ from src.retrieval_arena.ingestion.document import Document
 from src.retrieval_arena.ingestion.process import (
     Validate,
     Process_data,
+    _clean_extracted_text,
     hash_string_list,
     load_manifest,
     load_pdf,
@@ -65,6 +66,25 @@ def test_load_pdf_raises_for_missing_file(tmp_path):
     missing = tmp_path / "does_not_exist.pdf"
     with pytest.raises(ValueError):
         load_pdf(missing)
+
+
+# _clean_extracted_text
+
+def test_clean_extracted_text_rejoins_hyphenated_line_wraps():
+    assert _clean_extracted_text("frame-\nwork") == "framework"
+
+
+def test_clean_extracted_text_collapses_mid_sentence_newlines():
+    assert _clean_extracted_text("This\nwork introduces\na method.") == "This work introduces a method."
+
+
+def test_clean_extracted_text_preserves_real_hyphenated_words():
+    # no newline right after the hyphen - a real compound word, not a wrap artifact
+    assert _clean_extracted_text("state-of-the-art results") == "state-of-the-art results"
+
+
+def test_clean_extracted_text_collapses_repeated_whitespace():
+    assert _clean_extracted_text("a   b\t\tc\n\nd") == "a b c d"
 
 
 #  Validate

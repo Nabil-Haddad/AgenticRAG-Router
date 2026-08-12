@@ -3,8 +3,9 @@ from ..config import Config
 from .document import Document
 from pathlib import Path
 import hashlib
-import fitz
+import pymupdf as fitz
 import json
+import re
 from dataclasses import asdict
 
 logger = logging.getLogger(__name__)
@@ -140,13 +141,23 @@ def save_pdf_json(docs: list[Document], path: Path)->None:
         logger.info(f"{len(data)} pages saved at {json_path}")
 
 
+def _clean_extracted_text(text: str) -> str:
+    # PDF line-wraps are typographic, not semantic - a soft hyphen at a
+    # wrap point ("frame-\nwork") should rejoin into one word, and every
+    # other run of whitespace (including the wrap newlines themselves)
+    # should collapse to a single space rather than surface as literal \n
+    text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
 def load_pdf(path: Path)->list[Document]:
     docs: list[Document] = []
     if not path.exists():
         raise ValueError("Path doesn't exits")
     with fitz.open(path) as pdf:
         for page_num, page in enumerate(pdf, start=1):
-            text = page.get_text("text").strip()
+            text = _clean_extracted_text(page.get_text("text"))
             if not text:
                 continue
             docs.append(Document(
