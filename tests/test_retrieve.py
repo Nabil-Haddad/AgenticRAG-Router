@@ -3,16 +3,16 @@ import os
 
 import pytest
 
-import src.retrive as retrive
+import src.retrieve as retrieve
 from src.Config import Config
-from src.retrive import bm25_search, cosign_simularity, peek_first_5_elements
+from src.retrieve import bm25_search, cosign_simularity, peek_first_5_elements
 
 
 @pytest.fixture(autouse=True)
 def clear_bm25_cache():
-    retrive._bm25_cache.clear()
+    retrieve._bm25_cache.clear()
     yield
-    retrive._bm25_cache.clear()
+    retrieve._bm25_cache.clear()
 
 
 def make_chunk_dict(id_: str, text: str, source: str = "paper.pdf") -> dict:
@@ -39,7 +39,7 @@ def test_peek_prints_samples_on_success(mocker, capsys):
         "ids": ["c1", "c2"],
         "documents": ["first document text", "second document text"],
     }
-    mocker.patch("src.retrive.get_collection", return_value=fake_collection)
+    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
 
     result = peek_first_5_elements()
 
@@ -55,7 +55,7 @@ def test_peek_prints_samples_on_success(mocker, capsys):
 def test_peek_handles_failure_without_crashing(mocker, capsys):
     fake_collection = mocker.MagicMock()
     fake_collection.peek.side_effect = Exception("simulated connection failure")
-    mocker.patch("src.retrive.get_collection", return_value=fake_collection)
+    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
 
     result = peek_first_5_elements()
 
@@ -74,8 +74,8 @@ def test_cosign_simularity_embeds_query_and_returns_results(mocker):
         "documents": [["text one", "text two"]],
         "distances": [[0.1, 0.2]],
     }
-    mocker.patch("src.retrive.get_collection", return_value=fake_collection)
-    mock_embed = mocker.patch("src.retrive.embed_texts", return_value=[[0.5, 0.6]])
+    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
+    mock_embed = mocker.patch("src.retrieve.embed_texts", return_value=[[0.5, 0.6]])
 
     results = cosign_simularity("what is RAG?", top_k=2)
 
@@ -93,8 +93,8 @@ def test_cosign_simularity_embeds_query_and_returns_results(mocker):
 def test_cosign_simularity_defaults_top_k_to_5(mocker):
     fake_collection = mocker.MagicMock()
     fake_collection.query.return_value = {"ids": [[]], "documents": [[]], "distances": [[]]}
-    mocker.patch("src.retrive.get_collection", return_value=fake_collection)
-    mocker.patch("src.retrive.embed_texts", return_value=[[0.1]])
+    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
+    mocker.patch("src.retrieve.embed_texts", return_value=[[0.1]])
 
     cosign_simularity("a query")
 
@@ -107,8 +107,8 @@ def test_cosign_simularity_defaults_top_k_to_5(mocker):
 def test_cosign_simularity_returns_empty_list_on_failure(mocker):
     fake_collection = mocker.MagicMock()
     fake_collection.query.side_effect = Exception("simulated connection failure")
-    mocker.patch("src.retrive.get_collection", return_value=fake_collection)
-    mocker.patch("src.retrive.embed_texts", return_value=[[0.1]])
+    mocker.patch("src.retrieve.get_collection", return_value=fake_collection)
+    mocker.patch("src.retrieve.embed_texts", return_value=[[0.1]])
 
     assert cosign_simularity("a query") == []
 
@@ -174,7 +174,7 @@ def test_bm25_search_defaults_path_to_config_chunks_dir(tmp_path, monkeypatch):
 def test_bm25_search_reuses_cached_index_when_file_unchanged(tmp_path, mocker):
     path = tmp_path / "chunks.json"
     write_chunks(path, [make_chunk_dict("c1", "hello world")])
-    spy = mocker.spy(retrive, "load_chunks")
+    spy = mocker.spy(retrieve, "load_chunks")
 
     bm25_search("hello", path=path)
     bm25_search("world", path=path)
@@ -185,7 +185,7 @@ def test_bm25_search_reuses_cached_index_when_file_unchanged(tmp_path, mocker):
 def test_bm25_search_rebuilds_index_when_file_changes(tmp_path, mocker):
     path = tmp_path / "chunks.json"
     write_chunks(path, [make_chunk_dict("c1", "hello world")])
-    spy = mocker.spy(retrive, "load_chunks")
+    spy = mocker.spy(retrieve, "load_chunks")
 
     bm25_search("hello", path=path)
 
@@ -203,7 +203,7 @@ def test_bm25_search_rebuilds_index_when_file_changes(tmp_path, mocker):
 def test_bm25_search_returns_empty_list_on_unexpected_error(tmp_path, mocker, capsys):
     path = tmp_path / "chunks.json"
     write_chunks(path, [make_chunk_dict("c1", "hello world")])
-    mocker.patch("src.retrive._get_bm25_index", side_effect=Exception("simulated failure"))
+    mocker.patch("src.retrieve._get_bm25_index", side_effect=Exception("simulated failure"))
 
     results = bm25_search("hello", path=path)
 
