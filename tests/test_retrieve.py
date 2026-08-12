@@ -5,7 +5,7 @@ import pytest
 
 import src.retrieve as retrieve
 from src.Config import Config
-from src.retrieve import bm25_search, cosign_simularity, peek_first_5_elements
+from src.retrieve import bm25_search, cosign_simularity, peek_first_5_elements, search_hybrid_rrf
 
 
 @pytest.fixture(autouse=True)
@@ -211,3 +211,68 @@ def test_bm25_search_returns_empty_list_on_unexpected_error(tmp_path, mocker, ca
     out = capsys.readouterr().out
     assert "bm25 search failed" in out
     assert "simulated failure" in out
+
+
+# search_hybrid_rrf
+
+def test_search_hybrid_rrf_ranks_chunks_in_both_rankings_highest(mocker):
+    mocker.patch("src.retrieve.bm25_search", return_value=[
+        {"idx": "c1", "text": "chunk one", "score": 5.0},
+        {"idx": "c2", "text": "chunk two", "score": 3.0},
+    ])
+    mocker.patch("src.retrieve.cosign_simularity", return_value=[
+        {"idx": "c2", "text": "chunk two", "score": 0.1},
+        {"idx": "c3", "text": "chunk three", "score": 0.2},
+    ])
+
+    results = search_hybrid_rrf("query", top_k=3)
+
+    # c2 appears in both rankings (bm25 rank 2, vector rank 1), so its fused
+    # score should beat c1 and c3, which each appear in only one ranking
+    assert [r["idx"] for r in results] == ["c2", "c1", "c3"]
+
+
+def test_search_hybrid_rrf_respects_top_k(mocker):
+    mocker.patch("src.retrieve.bm25_search", return_value=[
+        {"idx": f"c{i}", "text": f"text {i}", "score": 1.0} for i in range(5)
+    ])
+    mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+
+    results = search_hybrid_rrf("query", top_k=2)
+
+    assert len(results) == 2
+
+
+def test_search_hybrid_rrf_passes_candidate_k_to_both_backends(mocker):
+    bm25_mock = mocker.patch("src.retrieve.bm25_search", return_value=[])
+    vector_mock = mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+
+    search_hybrid_rrf("query", top_k=5, candidate_k=15)
+
+    bm25_mock.assert_called_once_with("query", top_k=15)
+    vector_mock.assert_called_once_with("query", top_k=15)
+
+
+def test_search_hybrid_rrf_returns_empty_list_when_both_backends_empty(mocker):
+    mocker.patch("src.retrieve.bm25_search", return_value=[])
+    mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+
+    assert search_hybrid_rrf("query") == []
+
+
+def test_search_hybrid_rrf_result_shape_and_score_formula(mocker):
+    mocker.patch("src.retrieve.bm25_search", return_value=[{"idx": "c1", "text": "hello", "score": 1.0}])
+    mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+
+    results = search_hybrid_rrf("query", top_k=1)
+
+    assert results == [{"idx": "c1", "text": "hello", "score": pytest.approx(1 / 61)}]
+
+
+def test_search_hybrid_rrf_k_parameter_changes_score_weighting(mocker):
+    mocker.patch("src.retrieve.bm25_search", return_value=[{"idx": "c1", "text": "hello", "score": 1.0}])
+    mocker.patch("src.retrieve.cosign_simularity", return_value=[])
+
+    results = search_hybrid_rrf("query", top_k=1, k=10)
+
+    assert results[0]["score"] == pytest.approx(1 / 11)
