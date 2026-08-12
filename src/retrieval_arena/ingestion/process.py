@@ -5,7 +5,6 @@ from pathlib import Path
 import hashlib
 import fitz
 import json
-import re
 from dataclasses import asdict
 
 logger = logging.getLogger(__name__)
@@ -88,10 +87,23 @@ def log_pdf(docs : list[list[Document]])-> None:
         logger.info("#" * 50)
 
 
+# bibliography entries reliably contain these regardless of citation style
+# ([1] vs. Author-Year) or how PDF extraction happens to wrap their lines
+CITATION_MARKERS = ["URL http", "arXiv preprint", "doi:", "Proceedings of", " pages "]
+CITATION_DENSITY_THRESHOLD = 1.5  # marker hits per 100 words
+
+
+def _citation_density(text: str) -> float:
+    word_count = len(text.split())
+    if not word_count:
+        return 0.0
+    hits = sum(text.count(marker) for marker in CITATION_MARKERS)
+    return hits / word_count * 100
+
+
 def Validate(docs: list[Document]) -> list[Document]:
     new_documents : list[Document] = []
     word = "References"
-    pattern = r"^\[\d+\]"
     for doc in docs:
         # "References" heading marks the start of the bibliography;
         # keep only the content before it
@@ -99,11 +111,7 @@ def Validate(docs: list[Document]) -> list[Document]:
             before, match, after = doc.content.partition(word)
             new_content = before.strip()
         else :
-            phrases = doc.content.split("\n")
-            phrases_number = len(phrases)
-            references = [phrase for phrase in phrases if re.match(pattern, phrase)]
-            references_number = len(references)
-            if references_number / phrases_number >= 0.20:
+            if _citation_density(doc.content) >= CITATION_DENSITY_THRESHOLD:
                 continue
             new_content = doc.content
         new_documents.append(Document(

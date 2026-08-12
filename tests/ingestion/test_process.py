@@ -84,8 +84,12 @@ def test_validate_truncates_at_references_heading():
 
 
 def test_validate_drops_reference_heavy_page():
-    lines = [f"[{i}] Some Author, Some Title, Year." for i in range(8)] + ["one more line"]
-    content = "\n".join(lines)  # 8/9 lines match the citation pattern
+    lines = [
+        f"[{i}] Some Author. Some Title. Proceedings of Some Conference, pages {i}-{i+10}. "
+        f"doi: 10.1234/example.{i}. URL http://example.com/{i}"
+        for i in range(8)
+    ]
+    content = "\n".join(lines)
     docs = [make_doc(content)]
 
     assert Validate(docs) == []
@@ -101,10 +105,47 @@ def test_validate_keeps_normal_prose_page():
     assert result[0].content == content
 
 
+def test_validate_drops_reference_page_even_when_line_wrapped():
+    # citations wrapped across multiple lines before the next [n] marker,
+    # so barely any line *starts* with "[n]" - this used to slip through,
+    # since the old heuristic only counted matches at the start of a line
+    content = "\n".join(
+        f"[{i}] Some Author, Some\nCoauthor, and Another Author. Some Title. "
+        f"Proceedings of Some\nConference, pages {i}-{i+10}. URL http://example.com/{i}"
+        for i in range(8)
+    )
+    docs = [make_doc(content)]
+
+    assert Validate(docs) == []
+
+
+def test_validate_keeps_prose_with_frequent_inline_citations():
+    # (Author et al., Year)-style citations shouldn't trip the density
+    # check just because they're frequent - only actual bibliography
+    # vocabulary (URLs, DOIs, venues) should
+    content = "\n".join(
+        f"Prior work explores this problem (Author{i} et al., 202{i % 4})."
+        for i in range(8)
+    )
+    docs = [make_doc(content)]
+
+    result = Validate(docs)
+
+    assert len(result) == 1
+    assert result[0].content == content
+
+
 def test_validate_handles_mixed_batch_preserving_order():
     keep_doc = make_doc("Normal prose here.\nMore normal prose.", doc_id="keep")
     truncate_doc = make_doc("Kept part.\nReferences\n[1] citation", doc_id="trunc")
-    drop_doc = make_doc("\n".join(f"[{i}] citation line" for i in range(10)), doc_id="drop")
+    drop_doc = make_doc(
+        "\n".join(
+            f"[{i}] Some Author. Some Title. Proceedings of Some Conference, "
+            f"pages {i}-{i+10}. URL http://example.com/{i}"
+            for i in range(10)
+        ),
+        doc_id="drop",
+    )
 
     result = Validate([keep_doc, truncate_doc, drop_doc])
 
