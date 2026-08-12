@@ -97,15 +97,30 @@ def bm25_search(query: str, path: Path | None = None, top_k: int = 5) -> list[di
         print(e)
         return []
 
-    # same {idx, text, score} shape as cosign_simularity, and idx is the same
-    # chunk id used in Chroma - required so RRF can merge rankings by id later
+    # same {idx, text, score} shape as cosign_simularity
     return [
         {"idx": chunks[i].id, "text": chunks[i].text, "score": float(scores[i])}
         for i in top_indices
     ]
 
-def search_hybrid_rrf()->list:
-    pass
+def search_hybrid_rrf(query: str, top_k: int = 5, candidate_k: int = 20, k: int = 60) -> list[dict]:
+    # pull a wider candidate pool from each method than top_k, so a chunk
+    # that's strong in one ranking but just outside the other's top_k still
+    # gets a fair shot at surviving the fusion
+    bm25_results = bm25_search(query, top_k=candidate_k)
+    vector_results = cosign_simularity(query, top_k=candidate_k)
+
+    rrf_scores: dict[str, float] = {}
+    texts: dict[str, str] = {}
+
+    for ranking in (bm25_results, vector_results):
+        for rank, result in enumerate(ranking, start=1):
+            rrf_scores[result["idx"]] = rrf_scores.get(result["idx"], 0.0) + 1 / (k + rank)
+            texts[result["idx"]] = result["text"]
+
+    ranked = sorted(rrf_scores.items(), key=lambda item: item[1], reverse=True)[:top_k]
+
+    return [{"idx": idx, "text": texts[idx], "score": score} for idx, score in ranked]
 
 
 def main()->None:
