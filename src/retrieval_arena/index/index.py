@@ -11,10 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 
-# Create a collection 
-def get_collection():
+# Create a collection
+def get_collection(name: str | None = None):
+    if name is None:
+        name = Config.COLLECTION_NAME
     client = chromadb.PersistentClient(path=str(Config.VECTORDB_DIR))
-    return client.get_or_create_collection(name=Config.COLLECTION_NAME)
+    return client.get_or_create_collection(name=name)
 
 # load the data 
 def load_data(path:Path)->list[Chunk]:
@@ -25,7 +27,7 @@ def load_data(path:Path)->list[Chunk]:
     return docs
 
 
-def store_index(chunks : list[Chunk])-> int :
+def store_index(chunks : list[Chunk], collection_name: str | None = None)-> int :
     if not chunks:
         raise ValueError("No chunks founded")
 
@@ -33,8 +35,7 @@ def store_index(chunks : list[Chunk])-> int :
 
     embeddings = embed_texts(texts)
 
-    client = chromadb.PersistentClient(path=str(Config.VECTORDB_DIR))
-    collection = client.get_or_create_collection(name=Config.COLLECTION_NAME)
+    collection = get_collection(collection_name)
 
     # only these chunks are being (re)written; drop their stale entries
     # first instead of wiping and rebuilding the whole collection
