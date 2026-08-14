@@ -28,9 +28,10 @@ def peek_first_5_elements()->None:
         print(f"With Documents : {samples['documents'][i][:40]}")
 
 
-def cosign_simularity(query : str, top_k : int = 5 )->list[dict]:
+def cosign_simularity(query : str, top_k : int = 5, collection=None)->list[dict]:
     try :
-        collection = get_collection()
+        if collection is None:
+            collection = get_collection()
         # embed the query with the same pipeline used to embed the corpus,
         # instead of letting Chroma use its own (different) default embedder
         query_embedding = embed_texts([query])
@@ -44,8 +45,10 @@ def cosign_simularity(query : str, top_k : int = 5 )->list[dict]:
         return []
 
     return [
-        {"idx" : idx, "text" : text, "score" : score  }
-        for idx, text, score in zip(results['ids'][0], results['documents'][0], results['distances'][0])
+        {"idx": idx, "text": text, "score": score, "source": meta.get("source")}
+        for idx, text, score, meta in zip(
+            results['ids'][0], results['documents'][0], results['distances'][0], results['metadatas'][0]
+        )
     ]
 
     
@@ -92,30 +95,42 @@ def bm25_search(query: str, path: Path | None = None, top_k: int = 5) -> list[di
         print(e)
         return []
 
-    # same {idx, text, score} shape as cosign_simularity
+    # same {idx, text, score, source} shape as cosign_simularity
     return [
-        {"idx": chunks[i].id, "text": chunks[i].text, "score": float(scores[i])}
+        {"idx": chunks[i].id, "text": chunks[i].text, "score": float(scores[i]), "source": chunks[i].source}
         for i in top_indices
     ]
 
-def search_hybrid_rrf(query: str, top_k: int = 5, candidate_k: int = 20, k: int = 60) -> list[dict]:
+def search_hybrid_rrf(
+    query: str,
+    top_k: int = 5,
+    candidate_k: int = 20,
+    k: int = 60,
+    bm25_path: Path | None = None,
+    collection=None,
+) -> list[dict]:
     # pull a wider candidate pool from each method than top_k, so a chunk
     # that's strong in one ranking but just outside the other's top_k still
     # gets a fair shot at surviving the fusion
-    bm25_results = bm25_search(query, top_k=candidate_k)
-    vector_results = cosign_simularity(query, top_k=candidate_k)
+    bm25_results = bm25_search(query, path=bm25_path, top_k=candidate_k)
+    vector_results = cosign_simularity(query, top_k=candidate_k, collection=collection)
 
     rrf_scores: dict[str, float] = {}
     texts: dict[str, str] = {}
+    sources: dict[str, str] = {}
 
     for ranking in (bm25_results, vector_results):
         for rank, result in enumerate(ranking, start=1):
             rrf_scores[result["idx"]] = rrf_scores.get(result["idx"], 0.0) + 1 / (k + rank)
             texts[result["idx"]] = result["text"]
+            sources[result["idx"]] = result["source"]
 
     ranked = sorted(rrf_scores.items(), key=lambda item: item[1], reverse=True)[:top_k]
 
-    return [{"idx": idx, "text": texts[idx], "score": score} for idx, score in ranked]
+    return [
+        {"idx": idx, "text": texts[idx], "score": score, "source": sources[idx]}
+        for idx, score in ranked
+    ]
 
 
 # single entry point for callers outside this module 

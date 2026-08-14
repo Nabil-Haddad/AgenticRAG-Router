@@ -71,6 +71,15 @@ def test_get_collection_uses_configured_path_and_name(mocker):
     assert collection is mock_client.get_or_create_collection.return_value
 
 
+def test_get_collection_uses_a_given_name_instead_of_the_default(mocker):
+    mock_client_cls = mocker.patch("src.retrieval_arena.index.index.chromadb.PersistentClient")
+    mock_client = mock_client_cls.return_value
+
+    get_collection("custom_collection")
+
+    mock_client.get_or_create_collection.assert_called_once_with(name="custom_collection")
+
+
 # store_index
 
 def test_store_index_raises_on_empty_chunks():
@@ -104,6 +113,18 @@ def test_store_index_embeds_and_stores_chunks(mocker):
             {"source": "a.pdf", "page_start": 2, "page_end": 2, "token_count": 7, "hard_split": True},
         ],
     )
+
+
+def test_store_index_uses_a_given_collection_name_instead_of_the_default(mocker):
+    chunks = [make_chunk("c1", "first chunk")]
+
+    mocker.patch("src.retrieval_arena.index.index.embed_texts", return_value=[[0.1]])
+    mock_client_cls = mocker.patch("src.retrieval_arena.index.index.chromadb.PersistentClient")
+    mock_client = mock_client_cls.return_value
+
+    store_index(chunks, collection_name="custom_collection")
+
+    mock_client.get_or_create_collection.assert_called_once_with(name="custom_collection")
 
 
 def test_store_index_deletes_only_the_changed_sources(mocker):
