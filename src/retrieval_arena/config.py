@@ -15,6 +15,7 @@ load_dotenv()
 class Config:
     # Keys
     OPEN_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
     COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
     ENVIRONMENT : str = os.getenv("ENVIRONMENT", "development")
     LOG_LEVEL : str = os.getenv("LOG_LEVEL", "INFO")
@@ -32,6 +33,7 @@ class Config:
 
     # models
     EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
+    ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 
     # vector db
     VECTORDB_DIR = project_root / "vectordb"
@@ -72,6 +74,7 @@ class Config:
         return {
             "OPEN_API_KEY" : "set" if cls.OPEN_API_KEY else "MISSING",
             "COHERE_API_KEY" : "set" if cls.COHERE_API_KEY else "not set",
+            "ANTHROPIC_API_KEY" : "set" if cls.ANTHROPIC_API_KEY else "not set",
             "ENVIRONMENT" : cls.ENVIRONMENT,
             "LOG_LEVEL" : cls.LOG_LEVEL,
             "IS_PRODUCTION" : cls.IS_PRODUCTION,
