@@ -1,122 +1,173 @@
-# retrieval-arena
+# AgenticRAG-Router
 
-A from-scratch RAG (Retrieval-Augmented Generation) pipeline: take raw PDFs, extract and clean their text, split it into token-sized chunks, embed those chunks, index them in a vector database, and retrieve against them with three different strategies (BM25, vector similarity, and a hybrid RRF fusion of the two). The name points at the longer-term goal — comparing retrieval strategies against each other on a real benchmark (PubMedQA), not just building one fixed pipeline.
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-vector%20store-FFA500)](https://www.trychroma.com/)
+[![rank_bm25](https://img.shields.io/badge/rank__bm25-sparse%20retrieval-4B8BBE)](https://pypi.org/project/rank-bm25/)
+[![sentence-transformers](https://img.shields.io/badge/sentence--transformers-embeddings-FFD21E)](https://www.sbert.net/)
+[![tiktoken](https://img.shields.io/badge/tiktoken-tokenization-412991)](https://github.com/openai/tiktoken)
+[![Anthropic API](https://img.shields.io/badge/Anthropic-Claude%20API-D97757)](https://www.anthropic.com/)
+[![MCP](https://img.shields.io/badge/protocol-MCP-6f42c1)](https://modelcontextprotocol.io/)
+[![pytest](https://img.shields.io/badge/pytest-156%20tests-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![PyMuPDF](https://img.shields.io/badge/PyMuPDF-PDF%20extraction-ED1C24)](https://pymupdf.readthedocs.io/)
 
-Everything is built without a framework (no LangChain/LlamaIndex) — each stage is a small, explicit module, so the mechanics of chunking, embedding, indexing, and retrieval are hand-written rather than hidden behind a library call.
+**A production-style RAG pipeline where an LLM agent chooses its own retrieval strategy through MCP, benchmarked against static baselines on 1,000 real biomedical questions.**
 
-## Pipeline overview
+Built from scratch, no LangChain or LlamaIndex, so every stage (chunking, embedding, indexing, retrieval, fusion) is explicit rather than hidden behind a framework call.
+
+## At a glance
+
+| | |
+|---|---|
+| Language | Python 3.12 |
+| Size | ~1,470 lines of source, ~2,110 lines of tests, 156 tests, 45 commits |
+| Benchmark | PubMedQA (`pqa_labeled`), 1,000 real biomedical question and abstract pairs |
+| Retrieval methods | BM25, dense vector search, hybrid RRF fusion, each exposed as a named MCP tool |
+| Agentic layer | An LLM agent selects the retrieval method per query via the Anthropic API and MCP |
+| Headline finding | Unweighted hybrid RRF underperforms plain vector search on this benchmark. Root cause traced query by query, not just observed. |
+
+## Why this exists
+
+Most RAG projects assume hybrid retrieval is the safe default and stop there. This one tests that assumption directly: it builds all three retrieval strategies independently, evaluates them on a real information retrieval benchmark, and finds a case where the "safe default" actually loses to the simpler method. It then goes one step further and asks whether an LLM agent, given all three strategies as tools, would have picked the winning one on its own.
+
+## Architecture
 
 ```
 Data/raw/*.pdf
-      │  ingestion/process.py  (load_pdf, Validate, Process_data)
-      ▼
-Data/processed/*.json      -- one file per PDF, page-level Document objects
-      │  ingestion/chunk.py  (tag_sentences, chunk_document, chunk_data)
-      ▼
-Data/chunks/chunks.json    -- single combined file, all chunks from every PDF
-      │  index/index.py  (build_index, via ingestion/embed.py)
-      ▼
-vectordb/                  -- persistent ChromaDB collection
-      │  retrieval/retrieve.py  (bm25_search, cosign_simularity, search_hybrid_rrf)
-      ▼
-retrieve(query, method="hybrid")  -- ranked {idx, text, score} results
+      | ingestion/process.py   extract, clean, strip headers and references, hash
+      v
+Data/processed/*.json    one file per source, page-level documents
+      | ingestion/chunk.py      sentence-aware chunking, token budget and overlap
+      v
+Data/chunks/chunks.json   every chunk from every source
+      | index/index.py          embed, store with a targeted update, not a full rebuild
+      v
+vectordb/                 persistent ChromaDB collection
+      | retrieval/retrieve.py   bm25_search / cosign_simularity / search_hybrid_rrf
+      v
+retrieve(query, method) -> ranked results
+      | mcp_server/server.py    same three methods exposed as named MCP tools
+      v
+mcp_server/client.py      agent selects a tool via the Anthropic API, executes it, answers
 ```
 
-Every stage past the first is idempotent: a `manifest.json` tracks a content hash per source file, so re-running the pipeline only re-processes, re-chunks, and re-embeds files that actually changed.
+Every stage past extraction is idempotent at the individual file level. A manifest tracks a content hash per source file, so adding one new document to the corpus reprocesses only that document, not the rest of the corpus.
 
-## Project layout
+## Results on PubMedQA, 1,000 questions
 
-```
-src/retrieval_arena/
-├── config.py             # central settings, sourced from .env
-├── ingestion/
-│   ├── document.py       # Document dataclass (one page of extracted text)
-│   ├── process.py        # PDF extraction, reference stripping, idempotency
-│   ├── chunk.py          # token-aware chunking with overlap
-│   └── embed.py          # sentence-transformers wrapper
-├── index/
-│   └── index.py          # embeds chunks, stores/updates them in ChromaDB
-└── retrieval/
-    └── retrieve.py        # bm25_search, cosign_simularity, search_hybrid_rrf, retrieve()
+| Method | Recall@1 | Recall@5 | MRR |
+|---|---|---|---|
+| BM25 | 0.886 | 0.944 | 0.913 |
+| Vector | 0.972 | 0.989 | 0.980 |
+| Hybrid RRF | 0.946 | 0.989 | 0.963 |
 
-benchmarks/                # evaluation harnesses, not library code
-└── corpus_loading.py      # json-file vs. vector-db corpus loading, benchmarked
+Vector search alone wins on every metric. Hybrid, the usual default, underperforms it.
 
-build_index.py             # root orchestrator: run the full ingestion pipeline
-tests/                      # mirrors src/retrieval_arena/ + benchmarks/
-```
+<details>
+<summary><b>Why hybrid loses here</b></summary>
 
-## Stage by stage
+<br>
 
-### `config.py` — central configuration
-Loads secrets and settings from `.env` (`OPENAI_API_KEY`, `COHERE_API_KEY`, `ENVIRONMENT`, `LOG_LEVEL`). Defines every path used by the pipeline (`data_dir`, `output_dir`, `chunks_dir`, `VECTORDB_DIR`), anchored to the project root via `Path(__file__).resolve()` so paths resolve correctly regardless of which directory a script is launched from. Also holds chunking settings (`CHUNK_SIZE=400`, `CHUNK_OVERLAP=60`), embedding/DB settings (`EMBED_MODEL_NAME`, `COLLECTION_NAME`), and the default retrieval strategy (`RETRIEVAL_METHOD`) — all overridable via env vars. `configure_logging()` wires `LOG_LEVEL` into Python's `logging` module, called once at the top of every entrypoint. At the default log level it also raises the noisiest third-party loggers (`httpx`, `huggingface_hub`, etc.) to ERROR and filters a couple of specific vendor warnings, since running a query was otherwise dominated by HTTP request logs and CUDA/HF Hub warnings rather than the actual results; `LOG_LEVEL=DEBUG` still shows everything.
+Reciprocal Rank Fusion combines two rankings by summing 1 / (k + rank) across both, with no notion of which ranker is more trustworthy. That is a reasonable assumption when both rankers are roughly comparable in quality. It does not hold here: vector search is already close to ceiling at 97 to 99 percent, and BM25's failures on this corpus are not "ranks it low," they are "does not retrieve it at all."
 
-### `ingestion/document.py` — the page-level data model
-A small dataclass representing one page of extracted PDF text: `id`, `content`, `source` (originating filename), `page_num`, and a `metadata` dict.
+Tracing every query directly: hybrid fixed 12 questions vector search had gotten wrong, but broke 38 questions vector search had gotten right, a net loss of 26. In 66 percent of those 38 breaks, the correct document was completely absent from BM25's own candidate pool, so it got zero support from fusion, while a wrong but jointly-supported document, typically BM25's confident top pick given mild credibility by vector search, won the combined vote instead.
 
-### `ingestion/process.py` — PDF extraction, cleaning, and idempotency
-- `load_pdf(path)`: opens a PDF with PyMuPDF (imported as `pymupdf`, not the deprecated `fitz` alias) and extracts text page by page, skipping blank pages. Extracted text passes through `_clean_extracted_text`, which rejoins hyphenated line-wraps (`"frame-\nwork"` → `"framework"`, only when a newline directly follows the hyphen, so real compound words like `"state-of-the-art"` are untouched) and collapses every other run of whitespace to a single space — PDF line-wraps are typographic, not semantic, and raw `\n` characters were otherwise showing up mid-word and mid-sentence in chunk text.
-- `_strip_running_header(docs)`: some source PDFs print a running header (e.g. `"Preprint."`) on every page, which PyMuPDF extracts as if it were the start of the page's body text. Detected per-PDF rather than hardcoded to a specific string — a short, period-terminated token is stripped only if it repeats at the start of more than half of that PDF's pages — since not every source PDF has one.
-- `Validate(docs)`: strips reference/bibliography sections before they reach the chunker. Not a naive "drop everything after References" cut — it truncates the page where the heading appears (keeping any real content before it), then drops only *subsequent* pages whose citation-marker density (`URL http`, `arXiv preprint`, `doi:`, `Proceedings of`, `pages`, counted anywhere in the text and normalized per word) crosses a threshold. Checking the real extracted text showed references can span several pages and be followed by a genuine Appendix, which a hard cutoff would have destroyed.
-- `verify_data(documents)` / `load_manifest` / `save_manifest`: hash each PDF's pages independently and compare against `Data/manifest.json`, so only new or changed files are re-processed — not the whole corpus every run.
-- `Process_data(path)`: orchestrates the above and writes `Data/processed/<name>.json`.
+Vector and hybrid tie on Recall@5, both miss only 11 of 1,000 questions, but the shape of the misses is opposite. Vector's failures are mostly clean losses, the answer is nowhere in the top 10. Hybrid's failures are mostly demotions, the answer is still findable but pushed down to rank 2 through 5. Recall@5 does not penalize a demotion, MRR does, which is why hybrid's MRR is worse than vector's despite identical Recall@5.
 
-### `ingestion/chunk.py` — token-aware chunking
-- `split_into_sentences`: splits on `. `/`! `/`? ` boundaries, then merges a split piece back onto the previous one if the previous one ends with a known abbreviation (`et al.`, `e.g.`, `Fig.`, etc.). A plain period-then-space split treats narrative citations like `"Wu et al. (2023) introduce..."` as a sentence boundary, which left chunks opening on a dangling fragment like `"2017) from human feedback..."` with no context for what "2017" refers to.
-- `tag_sentences`: flattens a PDF's pages into one ordered list of `(sentence, page_number)` pairs, so chunking can cross page boundaries.
-- `chunk_document`: greedily fills a chunk until adding the next sentence would exceed `CHUNK_SIZE` tokens (via `tiktoken`'s `cl100k_base` encoding), then carries roughly `CHUNK_OVERLAP` tokens of trailing sentences into the next chunk. Hard-splits the rare single sentence that alone exceeds the token budget.
-- `chunk_data(changed_documents)`: merges newly chunked files into the existing `Data/chunks/chunks.json`, dropping only the stale chunks belonging to changed sources — the rest of the corpus's chunks are left untouched.
+Full per-query traces, error tables, and the supporting chart are in `results.md`.
 
-### `ingestion/embed.py` — embedding model wrapper
-Wraps `sentence-transformers` (`all-MiniLM-L6-v2`, 384-dimensional). `get_model()` is cached with `lru_cache` so the model loads once per process.
+</details>
 
-### `index/index.py` — vector database indexing
-`store_index(chunks)` embeds chunk text and stores it in a persistent ChromaDB collection, deleting only the stale entries for the sources being re-written first (not a full collection rebuild). `build_index(path)` threads `Process_data` → `chunk_data` → `store_index`, short-circuiting to `None` at any stage with nothing new to do.
+## The agentic layer
 
-### `retrieval/retrieve.py` — retrieval
-Three independent search strategies, all returning the same `{idx, text, score}` shape so results are directly comparable and mergeable:
-- `bm25_search(query)`: keyword search via `rank_bm25`, with an mtime-keyed cache so the index is built once and only rebuilt when `chunks.json` actually changes on disk.
-- `cosign_simularity(query)`: cosine similarity search against the ChromaDB collection, embedding the query with the same pipeline used to embed the corpus.
-- `search_hybrid_rrf(query)`: Reciprocal Rank Fusion over both of the above — each chunk's fused score is `sum(1 / (k + rank))` across every ranking it appears in, using rank position rather than raw score since BM25 scores and cosine distances aren't on the same scale.
+Three retrieval methods are exposed as three separately named MCP tools, `bm25_search`, `vector_search`, and `hybrid_search`, rather than one tool with a method parameter. That choice is deliberate: naming them separately makes the model's choice legible as the tool name itself, directly loggable and comparable against the benchmark results above.
 
-`retrieve(query, method=None, top_k=5, **kwargs)` is the single entry point other code should call — it dispatches by name (`"bm25"`, `"vector"`, `"hybrid"`) and defaults to `Config.RETRIEVAL_METHOD` (`"hybrid"`) when no method is given.
+`main.py --agent "question"` routes the query through the Anthropic API with all three tools attached and tool choice forced to pick exactly one. Parallel tool calls are disabled, since "choose which one" only means something if exactly one call happens. Whichever tool gets called executes through a real MCP session over stdio, and the result is sent back for a final synthesized answer.
 
-### `benchmarks/corpus_loading.py`
-Compares loading the corpus from `chunks.json` versus reading it back out of ChromaDB, to decide BM25's data source. Interleaves trials, reports mean and stdev (not just a single number), and includes a synthetic scaling benchmark (150 / 1,500 / 15,000 chunks) in an isolated temporary DB, in addition to the real corpus.
+<details>
+<summary><b>Engineering decisions behind the MCP server</b></summary>
 
-## Design decisions worth noting
+<br>
 
-- **No fixed-character chunking.** Chunk size is measured in tokens (via `tiktoken`), since token count is what actually determines whether text fits an embedding model's input limit.
-- **Chunking crosses page boundaries deliberately**, since pages are longer than the target chunk size and a naive per-page split would cut ideas off at every page break.
-- **Reference stripping is heuristic and vocabulary-density-based**, not a hard cutoff, because a real check of the extracted text showed useful content (an Appendix) can follow the bibliography. An earlier version counted `[n]`-style markers only at the *start* of each `\n`-split line, which assumed one citation per line — on some PDFs a single citation wraps across several extracted lines before the next `[n]` appears, diluting the ratio below threshold and letting whole bibliography pages through uncaught. Querying the real corpus surfaced this directly: a "machine learning algorithms" search returned mostly raw citation text instead of prose. The fix counts bibliography-specific vocabulary (URLs, DOIs, venue names, page ranges) anywhere in the page text instead of relying on line boundaries or a specific in-text citation style, which also removes the earlier dependency on numbered-bracket citations specifically. Verified against the real corpus: 27 of 147 chunks (~18%) were pure bibliography text before the fix; 0 after, and the same query now returns only prose.
-- **Idempotency is per-file, not whole-corpus.** Adding one new PDF re-processes, re-chunks, and re-embeds only that file — verified by adding a duplicate PDF and confirming the vector count and per-source chunk counts changed by exactly the expected amount.
-- **Retrieval methods share one result shape and one chunk-id space** (`idx` is the same id in Chroma, in BM25 results, and in the fused RRF results), which is what makes merging rankings by id in `search_hybrid_rrf` possible at all.
-- **Per-file idempotency tracks extracted text, not chunking logic.** The manifest hashes each PDF's cleaned page text, so a change to how that text gets *split into chunks* (e.g. the sentence-splitter fix above) doesn't register as a change for files whose underlying text didn't change — those files' existing chunks go stale silently until something else changes them or the corpus is rebuilt from scratch. Worth knowing before trusting `build_index.py`'s output after any chunking-logic change specifically.
-- **Generated data is never committed.** `Data/raw/`, `Data/processed/`, `Data/chunks/`, `Data/manifest.json`, and `vectordb/` are all `.gitignore`d — only source code and configuration are tracked, since everything else is regenerable from the pipeline.
-- **Structured logging over `print`.** Every entrypoint configures logging once (`Config.configure_logging()`) and gets its own logger via `logging.getLogger(__name__)`, driven by the `LOG_LEVEL` env var.
+- Tool descriptions state mechanism and a neutral rule of thumb only. They deliberately avoid saying vector search is empirically best, since a future comparison of the model's choices against the benchmark's ground truth would otherwise be circular.
+- Standard output is redirected to standard error around every retrieval call, since a stray print on an error path would corrupt the JSON-RPC stream MCP depends on.
+- The MCP library is pinned to version 1.29.0, not the newer 2.0.0. The newer release had dropped the documented decorator-based server API in favor of a far less-documented one, confirmed by inspecting the installed package directly rather than assumed from a changelog.
+- Verified end to end against a real Anthropic API key, not just mocks. The agent chose `vector_search` for a real query and produced a correctly grounded answer, confirming the full chain from subprocess spawn through MCP handshake, tool call, retrieval, and synthesis.
+
+</details>
+
+**A second benchmark tests the agent itself, not just the retrieval methods.** `benchmarks/mcp_choice_arena.py` runs the same PubMedQA questions through the agent: for each one, it records which tool the agent chose, scores that choice's actual retrieval results against the same ground truth used above, and compares the result to a vector-only baseline computed on the identical question set. Since every question is a real, billed API call, results are saved incrementally after each one rather than only at the end, so a run stopped partway still leaves complete, plottable results for everything finished so far.
+
+## Engineering highlights
+
+- **Idempotent pipeline.** A per-file content hash means adding one document to the corpus reprocesses only that document, confirmed by checking the exact vector count delta after a real change, not assumed from the code.
+- **Token-aware chunking.** Chunk size is measured with `tiktoken`, not characters or words, since token count is what actually determines whether text fits an embedding model's input window.
+- **A benchmark methodology built to survive scrutiny.** An early version of the internal timing benchmark ran all of one method's trials before the other's, which let system-level noise systematically favor whichever ran in a better window, and reported no variance. Rebuilt to interleave trials and report mean and standard deviation across three corpus scales.
+- **Bugs found by running the pipeline against its own output, not just by testing.** A query embedding mismatch that was silently correct by accident, a reference-stripping heuristic that let entire bibliography pages through, and a downstream stage that kept re-embedding the whole corpus even after idempotency correctly flagged only one changed file, were all caught this way.
+
+<details>
+<summary><b>Full list of bugs found and fixed</b></summary>
+
+<br>
+
+**Pipeline**
+- `cosign_simularity` originally let ChromaDB fall back to its own default embedder instead of the project's configured one. It happened to match in this case, but was correct by accident and would have silently diverged the moment the embedding model changed.
+- The reference-stripping heuristic counted citation markers only at the start of each line, which missed bibliography pages where a single citation wraps across several lines. A real query for "machine learning algorithms" returned mostly raw citation text before the fix. 27 of 147 chunks were pure bibliography before the fix, 0 after.
+- The sentence splitter treated `"et al. "` as a sentence boundary, leaving chunks that opened mid-sentence with no context for the fragment that followed.
+- The idempotency signal was computed correctly by the manifest but then ignored by the downstream chunking and indexing stages, which kept re-processing the entire corpus regardless. Caught by inspecting actual chunk and vector counts after a single-file change, not by a failing test.
+
+**MCP and agent**
+- A `top_k` parameter was accepted by the agent's request function but never referenced in its body, so two callers passing different values behaved identically. Fixed by folding it into the prompt explicitly and verifying the sent text at two different values.
+- A real API failure surfaced as an unreadable nested exception group, since the MCP stdio client's async internals wrap failures in ways a plain except clause does not catch. Fixed with a recursive walker that finds the real exception inside arbitrarily nested groups.
+
+**Testing**
+- A test mocking three sequential calls with one shared `return_value` dict caused the second and third calls to see an already-mutated dict, since production code pops a key from each result. Fixed by using `side_effect` so each call gets a fresh object, matching real behavior.
+- `MagicMock(name=...)` does not set a `.name` attribute, since `name` is reserved by the mock library's own constructor. Has to be assigned after construction instead.
+- An `lru_cache`'d helper's cache persisted across the whole test session, letting a stale value from one test leak into the next. Fixed with an autouse fixture that clears it before and after every test.
+
+</details>
+
+## Known limitations
+
+- The production ingestion pipeline has only been exercised against 3 sample PDFs.
+- Idempotency tracks extracted text, not chunking logic. A change to chunking rules alone will not trigger a reprocess for files whose underlying text did not change.
+- The agent-vs-baseline comparison (`benchmarks/mcp_choice_arena.py`) exists but has only been run at a small scale so far; a run large enough to draw a real conclusion about how often the agent's choice matches the empirically best method is pending.
+- `--agent` mode makes live, billed Anthropic API calls. Everything else in this project is local and free to run.
 
 ## Running it
 
 ```bash
 pip install -r requirements.txt
 
-# build/refresh the index from Data/raw/*.pdf
-python build_index.py
+python build_index.py                          # build or refresh the index from Data/raw/*.pdf
+python main.py "your question"                  # direct retrieval, default method
+python main.py --method bm25 "your question"     # force a specific method
+python main.py --agent "your question"            # let the agent choose (needs ANTHROPIC_API_KEY)
 
-# query it
-python main.py "your question here"
+python -m benchmarks.pubmedqa_arena             # re-run the PubMedQA benchmark
+python view_results.py                            # view the per-query error analysis chart
+python -m benchmarks.mcp_choice_arena --sample-size 30  # test the agent's own tool choice (needs ANTHROPIC_API_KEY)
+pytest                                              # run the 156 tests
 ```
 
-Individual modules are runnable directly too, e.g. `python -m src.retrieval_arena.ingestion.embed` for a quick manual check — always via `-m` from the project root, since the package uses relative imports internally.
+## Project layout
 
-Run the test suite with `pytest` from the project root.
+```
+src/retrieval_arena/
+|-- config.py               central settings, sourced from .env
+|-- ingestion/               extraction, cleaning, chunking, embedding
+|-- index/                   ChromaDB indexing
+|-- retrieval/                bm25_search, cosign_simularity, search_hybrid_rrf, retrieve()
+`-- mcp_server/               server.py exposes the 3 methods as MCP tools, client.py bridges to the Anthropic API
 
-## Current status / not yet done
+benchmarks/                   evaluation harnesses, kept separate from library code
+tests/                         mirrors src/retrieval_arena/ and benchmarks/, 156 tests
+build_index.py                 root orchestrator, run the full ingestion pipeline
+main.py                        root orchestrator, query directly or via --agent
+view_results.py                per-query error analysis chart
+```
 
-- Only tested against 3 sample arXiv PDFs in `Data/raw/`.
-- The PubMedQA benchmark comparing all three retrieval methods (the actual "arena") is in progress.
-- Removed-file cleanup in the manifest/chunks/vectordb isn't automatic — a deleted source PDF's old chunks only disappear as a side effect of some other file changing.
-- Idempotency is based on a hash of each PDF's extracted text; a chunking-*logic* change (chunk size, sentence-splitting rules, etc.) isn't tracked, so it silently doesn't apply to already-processed files unless the corpus is rebuilt from scratch.
-- `Process_data` has no per-file error handling — one corrupted/unreadable PDF would currently abort processing of the entire batch.
-- Reference-stripping thresholds (the citation-density cutoff, and which vocabulary counts as a marker) were calibrated against the 3 sample PDFs; may need re-tuning on a more varied corpus.
-- No CI/CD yet.
+## Stack
+Python, ChromaDB, rank_bm25, sentence-transformers, tiktoken, Anthropic API, MCP, pytest, PyMuPDF
+## License
+
+MIT, see [LICENSE](LICENSE).

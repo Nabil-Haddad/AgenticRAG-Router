@@ -101,14 +101,7 @@ def bm25_search(query: str, path: Path | None = None, top_k: int = 5) -> list[di
         for i in top_indices
     ]
 
-def search_hybrid_rrf(
-    query: str,
-    top_k: int = 5,
-    candidate_k: int = 20,
-    k: int = 60,
-    bm25_path: Path | None = None,
-    collection=None,
-) -> list[dict]:
+def search_hybrid_rrf(query: str, top_k: int = 5, candidate_k: int = 20, k: int = 60, bm25_path: Path | None = None,collection=None, ) -> list[dict]:
     # pull a wider candidate pool from each method than top_k, so a chunk
     # that's strong in one ranking but just outside the other's top_k still
     # gets a fair shot at surviving the fusion
