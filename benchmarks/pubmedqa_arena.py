@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 import logging
 import statistics
@@ -7,7 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from benchmarks.pubmedqa_dataset import PUBMEDQA_DIR, get_pubmedqa_data
-from benchmarks.pubmedqa_metrics import recall_at_k, reciprocal_rank
+from benchmarks.pubmedqa_metrics import precision_at_k, recall_at_k, reciprocal_rank
 from src.retrieval_arena.config import Config
 from src.retrieval_arena.ingestion.chunk import chunk_all, save_chunks_json
 from src.retrieval_arena.ingestion.document import Document
@@ -25,6 +26,7 @@ CHUNK_SIZE = 120
 CHUNK_OVERLAP = 20
 EVAL_TOP_K = 10  # how many results to fetch per query; must cover max(K_VALUES)
 K_VALUES = (1, 3, 5, 10)
+PER_QUERY_K = 5  # depth used for the per-query recall/precision CSV export
 METHODS = ("bm25", "vector", "hybrid")
 RESULTS_DIR = PUBMEDQA_DIR / "results"
 
@@ -66,6 +68,7 @@ def _run_method(method: str, question: str, top_k: int, chunks_path: Path, colle
 def evaluate_method( method: str, queries: dict[str, str], qrels: dict[str, list[str]], chunks_path: Path,collection, ) -> dict:
     recall_samples: dict[int, list[float]] = {k: [] for k in K_VALUES}
     rr_samples: list[float] = []
+    per_query: list[dict] = []
 
     for qid, question in queries.items():
         results = _run_method(method, question, top_k=EVAL_TOP_K, chunks_path=chunks_path, collection=collection)
@@ -74,7 +77,15 @@ def evaluate_method( method: str, queries: dict[str, str], qrels: dict[str, list
 
         for k in K_VALUES:
             recall_samples[k].append(recall_at_k(ranked_sources, relevant, k))
-        rr_samples.append(reciprocal_rank(ranked_sources, relevant))
+        rr = reciprocal_rank(ranked_sources, relevant)
+        rr_samples.append(rr)
+
+        per_query.append({
+            "question_id": qid,
+            "recall": recall_at_k(ranked_sources, relevant, PER_QUERY_K),
+            "precision": precision_at_k(ranked_sources, relevant, PER_QUERY_K),
+            "reciprocal_rank": rr,
+        })
 
     return {
         "recall": {
@@ -85,7 +96,31 @@ def evaluate_method( method: str, queries: dict[str, str], qrels: dict[str, list
             "mean": statistics.mean(rr_samples),
             "stdev": statistics.stdev(rr_samples) if len(rr_samples) > 1 else 0.0,
         },
+        "per_query": per_query,
     }
+
+
+def save_per_query_csvs(per_query_by_method: dict[str, list[dict]], output_dir: Path) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    metric_to_filename = {"recall": "recall.csv", "precision": "precision.csv", "reciprocal_rank": "mrr.csv"}
+
+    # every method evaluates the same query set, in the same order
+    question_ids = [row["question_id"] for row in per_query_by_method[METHODS[0]]]
+    value_by_method_and_qid = {
+        method: {row["question_id"]: row for row in rows} for method, rows in per_query_by_method.items()
+    }
+
+    paths = {}
+    for metric, filename in metric_to_filename.items():
+        output_path = output_dir / filename
+        with open(output_path, "w", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(["question_id", *METHODS])
+            for qid in question_ids:
+                writer.writerow([qid, *(value_by_method_and_qid[method][qid][metric] for method in METHODS)])
+        paths[metric] = output_path
+
+    return paths
 
 
 def save_results(results: dict, n_queries: int, output_dir: Path) -> Path:
@@ -172,9 +207,12 @@ def run_arena(sample_size: int | None = None) -> dict:
     collection = get_collection(collection_name)
 
     results = {}
+    per_query_by_method = {}
     for method in METHODS:
         logger.info(f"Evaluating {method} over {len(queries)} queries...")
-        results[method] = evaluate_method(method, queries, qrels, chunks_path, collection)
+        method_result = evaluate_method(method, queries, qrels, chunks_path, collection)
+        per_query_by_method[method] = method_result.pop("per_query")
+        results[method] = method_result
         recall5 = results[method]["recall"][5]["mean"]
         mrr = results[method]["mrr"]["mean"]
         logger.info(f"{method}: Recall@5={recall5:.3f}  MRR={mrr:.3f}")
@@ -182,7 +220,9 @@ def run_arena(sample_size: int | None = None) -> dict:
     results_path = save_results(results, len(queries), RESULTS_DIR)
     figure_path = RESULTS_DIR / "recall_mrr.png"
     make_figure(results, len(queries), figure_path)
-    logger.info(f"Saved results to {results_path} and figure to {figure_path}")
+    csv_paths = save_per_query_csvs(per_query_by_method, RESULTS_DIR)
+    logger.info(f"Saved results to {results_path}, figure to {figure_path}")
+    logger.info(f"Saved per-query CSVs: {', '.join(str(p) for p in csv_paths.values())}")
 
     return results
 

@@ -212,7 +212,13 @@ def test_run_arena_full_run_uses_the_real_collection_and_does_not_force_rebuild(
     )
     build_index = mocker.patch("benchmarks.pubmedqa_arena.build_pubmedqa_index", return_value=mocker.sentinel.chunks_path)
     mocker.patch("benchmarks.pubmedqa_arena.get_collection", return_value=mocker.sentinel.collection)
-    mocker.patch("benchmarks.pubmedqa_arena.evaluate_method", return_value={"recall": {k: {"mean": 1.0} for k in K_VALUES}, "mrr": {"mean": 1.0}})
+    mocker.patch(
+        "benchmarks.pubmedqa_arena.evaluate_method",
+        # a fresh dict per call - run_arena pops "per_query" off the result,
+        # which would corrupt a single shared return_value= across the 3 calls
+        side_effect=lambda *a, **kw: {"recall": {k: {"mean": 1.0} for k in K_VALUES}, "mrr": {"mean": 1.0}, "per_query": []},
+    )
+    mocker.patch("benchmarks.pubmedqa_arena.save_per_query_csvs", return_value={})
     save_results_mock = mocker.patch("benchmarks.pubmedqa_arena.save_results")
     make_figure_mock = mocker.patch("benchmarks.pubmedqa_arena.make_figure")
 
@@ -232,7 +238,13 @@ def test_run_arena_sample_run_subsets_data_and_uses_an_isolated_collection(mocke
     mocker.patch("benchmarks.pubmedqa_arena.get_pubmedqa_data", return_value=(corpus, queries, qrels))
     build_index = mocker.patch("benchmarks.pubmedqa_arena.build_pubmedqa_index", return_value=mocker.sentinel.chunks_path)
     mocker.patch("benchmarks.pubmedqa_arena.get_collection", return_value=mocker.sentinel.collection)
-    mocker.patch("benchmarks.pubmedqa_arena.evaluate_method", return_value={"recall": {k: {"mean": 1.0} for k in K_VALUES}, "mrr": {"mean": 1.0}})
+    mocker.patch(
+        "benchmarks.pubmedqa_arena.evaluate_method",
+        # a fresh dict per call - run_arena pops "per_query" off the result,
+        # which would corrupt a single shared return_value= across the 3 calls
+        side_effect=lambda *a, **kw: {"recall": {k: {"mean": 1.0} for k in K_VALUES}, "mrr": {"mean": 1.0}, "per_query": []},
+    )
+    mocker.patch("benchmarks.pubmedqa_arena.save_per_query_csvs", return_value={})
     mocker.patch("benchmarks.pubmedqa_arena.save_results")
     mocker.patch("benchmarks.pubmedqa_arena.make_figure")
 
@@ -256,10 +268,13 @@ def test_run_arena_evaluates_every_method_and_returns_their_results(mocker):
     mocker.patch("benchmarks.pubmedqa_arena.get_collection", return_value=mocker.sentinel.collection)
     evaluate_method_mock = mocker.patch(
         "benchmarks.pubmedqa_arena.evaluate_method",
-        side_effect=lambda method, *a, **kw: {"recall": {k: {"mean": 0.5} for k in K_VALUES}, "mrr": {"mean": 0.5}, "method": method},
+        side_effect=lambda method, *a, **kw: {
+            "recall": {k: {"mean": 0.5} for k in K_VALUES}, "mrr": {"mean": 0.5}, "per_query": [], "method": method,
+        },
     )
     mocker.patch("benchmarks.pubmedqa_arena.save_results")
     mocker.patch("benchmarks.pubmedqa_arena.make_figure")
+    mocker.patch("benchmarks.pubmedqa_arena.save_per_query_csvs", return_value={})
 
     results = run_arena(sample_size=None)
 
