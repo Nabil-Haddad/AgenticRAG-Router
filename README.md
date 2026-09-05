@@ -31,6 +31,8 @@ Most RAG projects assume hybrid retrieval is the safe default and stop there. Th
 
 ## Architecture
 
+![Retrieval pipeline architecture](assets/diagrams/diagram_1_retrieval_pipeline.svg)
+
 ```
 Data/raw/*.pdf
       | ingestion/process.py   extract, clean, strip headers and references, hash
@@ -53,6 +55,8 @@ mcp_server/client.py      agent selects a tool via the Anthropic API, executes i
 Every stage past extraction is idempotent at the individual file level. A manifest tracks a content hash per source file, so adding one new document to the corpus reprocesses only that document, not the rest of the corpus.
 
 ## Results on PubMedQA, 1,000 questions
+
+![PubMedQA benchmark architecture](assets/diagrams/diagram_2_pubmedqa_benchmark.svg)
 
 | Method | Recall@1 | Recall@5 | MRR |
 |---|---|---|---|
@@ -78,6 +82,8 @@ Full per-query traces, error tables, and the supporting chart are in `results.md
 </details>
 
 ## The agentic layer
+
+![Agentic MCP layer architecture](assets/diagrams/diagram_3_agentic_mcp_layer.svg)
 
 Three retrieval methods are exposed as three separately named MCP tools, `bm25_search`, `vector_search`, and `hybrid_search`, rather than one tool with a method parameter. That choice is deliberate: naming them separately makes the model's choice legible as the tool name itself, directly loggable and comparable against the benchmark results above.
 

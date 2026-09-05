@@ -30,4 +30,8 @@ env/
 # OS
 .DS_Store
 
+# Assets - diagrams are used in README.md and must be committed;
+# screenshots stays local-only until there's something meant for the repo
+assets/screenshots/
+
 project.md
