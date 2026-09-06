@@ -9,6 +9,7 @@
 [![MCP](https://img.shields.io/badge/protocol-MCP-6f42c1)](https://modelcontextprotocol.io/)
 [![pytest](https://img.shields.io/badge/pytest-156%20tests-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![PyMuPDF](https://img.shields.io/badge/PyMuPDF-PDF%20extraction-ED1C24)](https://pymupdf.readthedocs.io/)
+[![Docker](https://img.shields.io/badge/Docker-containerized-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
 **A production-style RAG pipeline where an LLM agent chooses its own retrieval strategy through MCP, benchmarked against static baselines on 1,000 real biomedical questions.**
 
@@ -173,6 +174,23 @@ python -m benchmarks.mcp_choice_arena --sample-size 30  # test the agent's own t
 pytest                                              # run the 156 tests
 ```
 
+### Running it with Docker
+
+The project is also containerized, so it can run without installing Python or any dependency locally.
+
+```bash
+docker build -t retrieval-arena:latest .
+
+docker run --rm \
+  -v $(pwd)/vectordb:/app/vectordb \
+  -v $(pwd)/Data:/app/Data \
+  retrieval-arena:latest "your question"
+```
+
+`Data/` and `vectordb/` are mounted in at run time rather than baked into the image, since they're runtime state (the corpus and its index), not code. That keeps the image itself generic and reusable against any dataset, and means rebuilding the corpus never requires rebuilding the image.
+
+`requirements.txt` installs the CPU-only build of `torch`, not the CUDA one. Every direct dependency is pinned to the exact version this project is tested against, so the image resolves the same environment as local development, just without the several extra gigabytes of GPU libraries this project never actually uses.
+
 ## Project layout
 
 ```
@@ -188,10 +206,11 @@ tests/                         mirrors src/retrieval_arena/ and benchmarks/, 156
 build_index.py                 root orchestrator, run the full ingestion pipeline
 main.py                        root orchestrator, query directly or via --agent
 view_results.py                per-query error analysis chart
+Dockerfile, .dockerignore       container build, CPU-only, pinned to the exact dependency versions above
 ```
 
 ## Stack
-Python, ChromaDB, rank_bm25, sentence-transformers, tiktoken, Anthropic API, MCP, pytest, PyMuPDF
+Python, ChromaDB, rank_bm25, sentence-transformers, tiktoken, Anthropic API, MCP, pytest, PyMuPDF, Docker
 ## License
 
 MIT, see [LICENSE](LICENSE).
