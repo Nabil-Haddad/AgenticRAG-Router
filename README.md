@@ -10,6 +10,7 @@
 [![pytest](https://img.shields.io/badge/pytest-156%20tests-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
 [![PyMuPDF](https://img.shields.io/badge/PyMuPDF-PDF%20extraction-ED1C24)](https://pymupdf.readthedocs.io/)
 [![Docker](https://img.shields.io/badge/Docker-containerized-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![CI](https://img.shields.io/github/actions/workflow/status/Nabil-Haddad/AgenticRAG-Router/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/Nabil-Haddad/AgenticRAG-Router/actions/workflows/ci.yml)
 
 **A production-style RAG pipeline where an LLM agent chooses its own retrieval strategy through MCP, benchmarked against static baselines on 1,000 real biomedical questions.**
 
@@ -191,6 +192,10 @@ docker run --rm \
 
 `requirements.txt` installs the CPU-only build of `torch`, not the CUDA one. Every direct dependency is pinned to the exact version this project is tested against, so the image resolves the same environment as local development, just without the several extra gigabytes of GPU libraries this project never actually uses.
 
+### CI
+
+Every push and pull request to `main` runs the full test suite via GitHub Actions (`.github/workflows/ci.yml`): checkout, Python 3.12, install `requirements.txt`, `pytest`. It's fully hermetic, no `ANTHROPIC_API_KEY` or live API calls involved, since the test suite already mocks the Anthropic API and MCP subprocess. The CI badge at the top of this README reflects the status of the latest run on `main`.
+
 ## Project layout
 
 ```
@@ -207,6 +212,7 @@ build_index.py                 root orchestrator, run the full ingestion pipelin
 main.py                        root orchestrator, query directly or via --agent
 view_results.py                per-query error analysis chart
 Dockerfile, .dockerignore       container build, CPU-only, pinned to the exact dependency versions above
+.github/workflows/ci.yml       runs the test suite on every push and pull request to main
 ```
 
 ## Stack
