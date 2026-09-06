@@ -103,6 +103,24 @@ Three retrieval methods are exposed as three separately named MCP tools, `bm25_s
 
 **A second benchmark tests the agent itself, not just the retrieval methods.** `benchmarks/mcp_choice_arena.py` runs the same PubMedQA questions through the agent: for each one, it records which tool the agent chose, scores that choice's actual retrieval results against the same ground truth used above, and compares the result to a vector-only baseline computed on the identical question set. Since every question is a real, billed API call, results are saved incrementally after each one rather than only at the end, so a run stopped partway still leaves complete, plottable results for everything finished so far.
 
+<details>
+<summary><b>Result: does the agent rediscover the winning method on its own?</b></summary>
+
+<br>
+
+Run on the full 1,000-question set, with tool descriptions that never hint which method performs best:
+
+| | Recall@5 | MRR |
+|---|---|---|
+| Claude's chosen method | 0.982 | 0.962 |
+| Vector-only baseline | 0.989 | 0.979 |
+
+Claude picked hybrid RRF 68% of the time (681/1,000), vector 24% (240/1,000), and BM25 8% (76/1,000) — defaulting toward the conventional "hybrid is the safe choice" assumption rather than the method this project's own benchmark already showed wins here. Tracing the 36 questions where Claude's pick scored worse than vector alone, 26 reproduce the exact demotion pattern from the headline finding above: the correct document stays in the top 5 but gets pushed down from rank 1, which Recall@5 doesn't penalize but MRR does. A separate, smaller failure mode also showed up: 3 of the 1,000 calls named a tool that was never offered, correctly scored as a clean miss rather than crashing the run.
+
+Full breakdown, per-query traces, and the chosen-method chart are in `results.md`.
+
+</details>
+
 ## Engineering highlights
 
 - **Idempotent pipeline.** A per-file content hash means adding one document to the corpus reprocesses only that document, confirmed by checking the exact vector count delta after a real change, not assumed from the code.
@@ -136,7 +154,7 @@ Three retrieval methods are exposed as three separately named MCP tools, `bm25_s
 
 - The production ingestion pipeline has only been exercised against 3 sample PDFs.
 - Idempotency tracks extracted text, not chunking logic. A change to chunking rules alone will not trigger a reprocess for files whose underlying text did not change.
-- The agent-vs-baseline comparison (`benchmarks/mcp_choice_arena.py`) exists but has only been run at a small scale so far; a run large enough to draw a real conclusion about how often the agent's choice matches the empirically best method is pending.
+- The agent-vs-baseline comparison (`benchmarks/mcp_choice_arena.py`) has now been run on the full 1,000-question set: the agent defaults to hybrid RRF most of the time and scores measurably below the vector-only baseline as a result (see the agentic layer section above).
 - `--agent` mode makes live, billed Anthropic API calls. Everything else in this project is local and free to run.
 
 ## Running it
