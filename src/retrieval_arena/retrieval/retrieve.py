@@ -10,7 +10,7 @@ from rank_bm25 import BM25Okapi
 
 logger = logging.getLogger(__name__)
 
-# create 3 different function cosign_simularity , mb25_search , search_hypbrid_rrf
+# Create 3 different function cosign_simularity , mb25_search , search_hypbrid_rrf
 
 def peek_first_5_elements()->None:
     try :
@@ -32,8 +32,8 @@ def cosign_simularity(query : str, top_k : int = 5, collection=None)->list[dict]
     try :
         if collection is None:
             collection = get_collection()
-        # embed the query with the same pipeline used to embed the corpus,
-        # instead of letting Chroma use its own (different) default embedder
+        # Embed the query with the same pipeline used to embed the corpus,
+        # Instead of letting Chroma use its own (different) default embedder
         query_embedding = embed_texts([query])
         results = collection.query(
             query_embeddings=query_embedding,
@@ -102,9 +102,6 @@ def bm25_search(query: str, path: Path | None = None, top_k: int = 5) -> list[di
     ]
 
 def search_hybrid_rrf(query: str, top_k: int = 5, candidate_k: int = 20, k: int = 60, bm25_path: Path | None = None,collection=None, ) -> list[dict]:
-    # pull a wider candidate pool from each method than top_k, so a chunk
-    # that's strong in one ranking but just outside the other's top_k still
-    # gets a fair shot at surviving the fusion
     bm25_results = bm25_search(query, path=bm25_path, top_k=candidate_k)
     vector_results = cosign_simularity(query, top_k=candidate_k, collection=collection)
 

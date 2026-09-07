@@ -13,11 +13,6 @@ logger = logging.getLogger(__name__)
 
 ENCODING = tiktoken.get_encoding("cl100k_base")
 SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
-
-# the splitter above treats any ". " as a sentence end, which false-positives
-# on abbreviations common in academic text (especially narrative citations
-# like "Wu et al. (2023)") - pieces ending in one of these get merged back
-# onto the next piece instead of standing alone as a "sentence"
 ABBREVIATIONS = ("et al.", "e.g.", "i.e.", "cf.", "vs.", "Fig.", "Eq.", "etc.")
 
 

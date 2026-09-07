@@ -38,7 +38,6 @@ def hash_string_list(strings: list[str]) -> str:
     return hashlib.sha256(combined_text.encode("utf-8")).hexdigest()
 
 
-# returns (bool, list[list[Document]] | None):
 # if we have the same data we return (False, None)
 # if we have completely new data we return (True, docs)
 # if we have partial new data we return (True, only the changed/new pdfs)
@@ -46,8 +45,7 @@ def verify_data(documents: list[list[Document]]) -> tuple[bool, list[list[Docume
     manifest = load_manifest(Config.manifest_path)
     stored_files = manifest.get("files", {}) if manifest is not None else {}
 
-    # hash each pdf's pages on their own, so we can tell which specific
-    # files are new/changed instead of only "something in the corpus changed"
+    # hash each pdf's pages on their own, so we can tell which specific files are new/changed
     new_files: dict[str, str] = {}
     changed_documents: list[list[Document]] = []
     for pdf_docs in documents:
@@ -89,8 +87,6 @@ def log_pdf(docs : list[list[Document]])-> None:
         logger.info("#" * 50)
 
 
-# bibliography entries reliably contain these regardless of citation style
-# ([1] vs. Author-Year) or how PDF extraction happens to wrap their lines
 CITATION_MARKERS = ["URL http", "arXiv preprint", "doi:", "Proceedings of", " pages "]
 CITATION_DENSITY_THRESHOLD = 1.5  # marker hits per 100 words
 
@@ -107,8 +103,7 @@ def Validate(docs: list[Document]) -> list[Document]:
     new_documents : list[Document] = []
     word = "References"
     for doc in docs:
-        # "References" heading marks the start of the bibliography;
-        # keep only the content before it
+        # "References" heading marks the start of the bibliography, keep only the content before it
         if word in doc.content.split():
             before, match, after = doc.content.partition(word)
             new_content = before.strip()
@@ -142,11 +137,8 @@ def save_pdf_json(docs: list[Document], path: Path)->None:
         logger.info(f"{len(data)} pages saved at {json_path}")
 
 
+# Deal with the multiple spaces in a Research Document
 def _clean_extracted_text(text: str) -> str:
-    # PDF line-wraps are typographic, not semantic - a soft hyphen at a
-    # wrap point ("frame-\nwork") should rejoin into one word, and every
-    # other run of whitespace (including the wrap newlines themselves)
-    # should collapse to a single space rather than surface as literal \n
     text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
@@ -175,10 +167,6 @@ RUNNING_HEADER_THRESHOLD = 0.5  # fraction of a PDF's pages that must share a le
 
 
 def _strip_running_header(docs: list[Document]) -> list[Document]:
-    # some PDFs print a running header on every page (e.g. "Preprint."),
-    # which PyMuPDF extracts as if it were the start of the page's body
-    # text; detect it per-PDF instead of hardcoding a specific string,
-    # since not every source PDF has one
     if len(docs) < 4:
         return docs
 
@@ -226,8 +214,8 @@ def Process_data(path: Path, extensions: list[str] | None = None) -> list[list[D
         list_pages = _strip_running_header(list_pages)
         list_pages = Validate(list_pages)
         documents.append(list_pages)
-    # until here we would have our clean pdf's
-    # now we deal with every case
+    # Until here we would have our clean pdf's
+    # Now we deal with every case
     valid , new_docs = verify_data(documents)
         # if every thing is ok , save the documents
     if valid:

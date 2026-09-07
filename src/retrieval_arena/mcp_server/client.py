@@ -43,6 +43,12 @@ async def run_conversation( session: ClientSession, anthropic_client: anthropic.
         return RetrievalChoiceResult(question=question, chosen_method=None, tool_input=None, claude_final_text=text)
 
     tool_result = await session.call_tool(tool_use.name, tool_use.input)
+    if tool_result.isError:
+        # Deal with the model hellusination when it calles a non-existing tool
+        return RetrievalChoiceResult(
+            question=question, chosen_method=tool_use.name, tool_input=tool_use.input,
+            claude_final_text=f"(tool call failed: {tool_result.content[0].text})",
+        )
     retrieved = json.loads(tool_result.content[0].text)
 
     followup = anthropic_client.messages.create(
