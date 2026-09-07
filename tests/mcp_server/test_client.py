@@ -43,6 +43,7 @@ def make_session(mocker, tools: list, call_tool_result_text: str | None = None):
     session.list_tools = mocker.AsyncMock(return_value=mocker.MagicMock(tools=tools))
     if call_tool_result_text is not None:
         fake_result = mocker.MagicMock()
+        fake_result.isError = False
         fake_result.content = [mocker.MagicMock(text=call_tool_result_text)]
         session.call_tool = mocker.AsyncMock(return_value=fake_result)
     return session
@@ -165,6 +166,30 @@ def test_run_conversation_returns_early_when_claude_uses_no_tool(mocker):
         question="q", chosen_method=None, tool_input=None, retrieved_results=[], claude_final_text="no tool needed"
     )
     session.call_tool.assert_not_called()
+
+
+# run_conversation - tool call rejected by the server
+
+def test_run_conversation_handles_a_tool_the_server_does_not_recognize(mocker):
+    # e.g. the model calls "semantic_search", a name it was never given
+    tool = make_mcp_tool(mocker, "vector_search")
+    session = make_session(mocker, [tool])
+    error_result = mocker.MagicMock()
+    error_result.isError = True
+    error_result.content = [mocker.MagicMock(text="Unknown tool 'semantic_search'")]
+    session.call_tool = mocker.AsyncMock(return_value=error_result)
+
+    tool_use_block = ToolUseBlock(id="toolu_1", name="semantic_search", input={"query": "q"}, type="tool_use")
+    anthropic_client = mocker.MagicMock()
+    anthropic_client.messages.create = mocker.MagicMock(return_value=mocker.MagicMock(content=[tool_use_block]))
+
+    result = run(run_conversation(session, anthropic_client, "q", "model"))
+
+    assert result == RetrievalChoiceResult(
+        question="q", chosen_method="semantic_search", tool_input={"query": "q"},
+        retrieved_results=[], claude_final_text="(tool call failed: Unknown tool 'semantic_search')",
+    )
+    # no follow-up call for a final answer when the tool itself failed
     assert anthropic_client.messages.create.call_count == 1
 
 

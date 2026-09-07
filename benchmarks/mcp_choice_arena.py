@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import csv
 import json
 import logging
 import statistics
@@ -30,8 +31,8 @@ RESULTS_DIR = PUBMEDQA_DIR / "mcp_choice"
 TOOL_NAMES = ("bm25_search", "vector_search", "hybrid_search")
 # same categorical palette used throughout the rest of the arena, keyed by
 # MCP tool name instead of pubmedqa_arena's short method name
-TOOL_COLORS = {"bm25_search": "#2a78d6", "vector_search": "#eb6834", "hybrid_search": "#1baf7a"}
-TOOL_LABELS = {"bm25_search": "BM25", "vector_search": "Vector", "hybrid_search": "Hybrid RRF"}
+TOOL_COLORS = {"bm25_search": "#2a78d6", "vector_search": "#eb6834", "hybrid_search": "#1baf7a", "other": "#9a9a9a"}
+TOOL_LABELS = {"bm25_search": "BM25", "vector_search": "Vector", "hybrid_search": "Hybrid RRF", "other": "Other*"}
 
 
 async def run_choice_sample(
@@ -42,6 +43,7 @@ async def run_choice_sample(
     model: str,
     top_k: int,
     output_dir: Path,
+    existing_records: list[dict] | None = None,
 ) -> list[dict]:
     anthropic_client = anthropic.Anthropic(api_key=Config.ANTHROPIC_API_KEY)
     env = {
@@ -51,7 +53,7 @@ async def run_choice_sample(
     }
     params = StdioServerParameters(command=sys.executable, args=["-m", SERVER_MODULE], cwd=str(Config.project_root), env=env)
 
-    records = []
+    records = list(existing_records or [])
     # one subprocess/session reused across every query
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -68,6 +70,7 @@ async def run_choice_sample(
                 logger.info(f"  chose {claude_result.chosen_method}")
                 records.append({
                     "question_id": qid,
+                    "question": question,
                     "chosen_method": claude_result.chosen_method,
                     "claude_recall": recall_at_k(claude_sources, relevant, top_k),
                     "claude_reciprocal_rank": reciprocal_rank(claude_sources, relevant),
@@ -84,9 +87,14 @@ async def run_choice_sample(
 
 def summarize(records: list[dict]) -> dict:
     method_counts = Counter(r["chosen_method"] for r in records)
+    # a hallucinated tool name (e.g. "semantic_search") outside TOOL_NAMES
+    other_count = sum(count for name, count in method_counts.items() if name not in TOOL_NAMES)
+    distribution = {tool: method_counts.get(tool, 0) for tool in TOOL_NAMES}
+    if other_count:
+        distribution["other"] = other_count
     return {
         "n_queries": len(records),
-        "method_distribution": {tool: method_counts.get(tool, 0) for tool in TOOL_NAMES},
+        "method_distribution": distribution,
         "claude": {
             "recall_mean": statistics.mean(r["claude_recall"] for r in records),
             "mrr_mean": statistics.mean(r["claude_reciprocal_rank"] for r in records),
@@ -107,12 +115,36 @@ def save_results(records: list[dict], summary: dict, output_dir: Path) -> Path:
     return output_path
 
 
+def load_existing_records(output_dir: Path) -> list[dict]:
+    path = output_dir / "results.json"
+    if not path.exists():
+        return []
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)["per_query"]
+
+
+def save_choices_csv(records: list[dict], output_dir: Path) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "choices.csv"
+    fieldnames = [
+        "question_id", "question", "chosen_method",
+        "claude_recall", "claude_reciprocal_rank", "vector_recall", "vector_reciprocal_rank",
+    ]
+    with open(output_path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in records:
+            writer.writerow({field: record.get(field, "") for field in fieldnames})
+    return output_path
+
+
 def make_figure(summary: dict, output_path: Path) -> None:
     fig, (ax_choice, ax_compare) = plt.subplots(1, 2, figsize=(11, 4.5), width_ratios=[1.2, 1])
 
-    choice_counts = [summary["method_distribution"][tool] for tool in TOOL_NAMES]
+    choice_tools = list(TOOL_NAMES) + (["other"] if "other" in summary["method_distribution"] else [])
+    choice_counts = [summary["method_distribution"][tool] for tool in choice_tools]
     bars = ax_choice.bar(
-        [TOOL_LABELS[t] for t in TOOL_NAMES], choice_counts, color=[TOOL_COLORS[t] for t in TOOL_NAMES],
+        [TOOL_LABELS[t] for t in choice_tools], choice_counts, color=[TOOL_COLORS[t] for t in choice_tools],
     )
     ax_choice.set_ylabel("Number of queries")
     ax_choice.set_title("Which method Claude chose")
@@ -153,6 +185,8 @@ def make_figure(summary: dict, output_path: Path) -> None:
     fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.0), ncol=2, frameon=False)
 
     fig.suptitle(f"MCP retrieval-choice arena — {summary['n_queries']} queries", fontsize=13, fontweight="bold", y=1.1)
+    if "other" in summary["method_distribution"]:
+        fig.text(0.01, -0.04, "* a tool name Claude called that was never one of the three offered", fontsize=8, color="#5a5a5a")
     fig.tight_layout(rect=(0, 0, 1, 0.88))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300, facecolor="white", bbox_inches="tight")
@@ -175,24 +209,33 @@ def run_mcp_choice_arena(sample_size: int = DEFAULT_SAMPLE_SIZE, model: str = Co
     chunks_path = build_pubmedqa_index(corpus, PUBMEDQA_DIR, COLLECTION_NAME, force=False)
     collection = get_collection(COLLECTION_NAME)
 
-    logger.info(f"Running {len(sampled_queries)} queries through Claude + MCP...")
-    try:
-        records = asyncio.run(
-            run_choice_sample(sampled_queries, qrels, chunks_path, collection, model, EVAL_TOP_K, RESULTS_DIR)
-        )
-    except BaseException:
-        # every query already saved its own progress via run_choice_sample,
-        # so an interrupted/failed run still has real (partial) results on
-        # disk - rebuild the figure from them before re-raising, rather than
-        # leaving a results.json with no matching chart
-        partial_path = RESULTS_DIR / "results.json"
-        if partial_path.exists():
-            with open(partial_path, "r", encoding="utf-8") as fh:
-                partial_records = json.load(fh)["per_query"]
+    existing_records = load_existing_records(RESULTS_DIR)
+    for record in existing_records:
+        record.setdefault("question", sampled_queries.get(record["question_id"], ""))
+    already_done = {r["question_id"] for r in existing_records}
+    remaining_queries = {qid: q for qid, q in sampled_queries.items() if qid not in already_done}
+
+    if already_done:
+        logger.info(f"Resuming: {len(already_done)} queries already completed, {len(remaining_queries)} remaining.")
+
+    if not remaining_queries:
+        records = existing_records
+    else:
+        logger.info(f"Running {len(remaining_queries)} queries through Claude + MCP...")
+        try:
+            records = asyncio.run(
+                run_choice_sample(
+                    remaining_queries, qrels, chunks_path, collection, model, EVAL_TOP_K, RESULTS_DIR, existing_records,
+                )
+            )
+        except BaseException:
+            # rebuild the figure/CSV from whatever was saved before re-raising
+            partial_records = load_existing_records(RESULTS_DIR)
             if partial_records:
                 logger.warning(f"Run did not finish - plotting the {len(partial_records)} queries completed so far.")
                 make_figure(summarize(partial_records), RESULTS_DIR / "method_choice.png")
-        raise
+                save_choices_csv(partial_records, RESULTS_DIR)
+            raise
 
     summary = summarize(records)
     logger.info(f"Method distribution: {summary['method_distribution']}")
@@ -202,7 +245,8 @@ def run_mcp_choice_arena(sample_size: int = DEFAULT_SAMPLE_SIZE, model: str = Co
     results_path = save_results(records, summary, RESULTS_DIR)
     figure_path = RESULTS_DIR / "method_choice.png"
     make_figure(summary, figure_path)
-    logger.info(f"Saved results to {results_path} and figure to {figure_path}")
+    csv_path = save_choices_csv(records, RESULTS_DIR)
+    logger.info(f"Saved results to {results_path}, figure to {figure_path}, and choices to {csv_path}")
 
     return summary
 
