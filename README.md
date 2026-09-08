@@ -25,7 +25,7 @@ Built from scratch, no LangChain or LlamaIndex, so every stage (chunking, embedd
 | Benchmark | PubMedQA (`pqa_labeled`), 1,000 real biomedical question and abstract pairs |
 | Retrieval methods | BM25, dense vector search, hybrid RRF fusion, each exposed as a named MCP tool |
 | Agentic layer | An LLM agent selects the retrieval method per query via the Anthropic API and MCP |
-| Headline finding | Unweighted hybrid RRF underperforms plain vector search on this benchmark. Root cause traced query by query, not just observed. |
+| Headline finding | Unweighted hybrid RRF underperforms plain vector search on this benchmark, root cause traced query by query. Given the same choice with no hint which one wins, an LLM agent defaults to hybrid anyway and pays for it in accuracy, confirming the finding a second, independent way. |
 
 ## Why this exists
 
@@ -156,7 +156,6 @@ Full breakdown, per-query traces, and the chosen-method chart are in `results.md
 
 - The production ingestion pipeline has only been exercised against 3 sample PDFs.
 - Idempotency tracks extracted text, not chunking logic. A change to chunking rules alone will not trigger a reprocess for files whose underlying text did not change.
-- The agent-vs-baseline comparison (`benchmarks/mcp_choice_arena.py`) has now been run on the full 1,000-question set: the agent defaults to hybrid RRF most of the time and scores measurably below the vector-only baseline as a result (see the agentic layer section above).
 - `--agent` mode makes live, billed Anthropic API calls. Everything else in this project is local and free to run.
 
 ## Running it
