@@ -51,9 +51,7 @@ def compare(func_a: Callable,func_b: Callable,iterations: int = 10,args_a: tuple
     times_a: list[float] = []
     times_b: list[float] = []
 
-    # interleave trials (a, b, a, b, ...) instead of running all of a then
-    # all of b - otherwise time-varying system noise (cache warmup,
-    # background load) can systematically favor whichever block runs first
+    # interleaved (a, b, a, b, ...) so system noise can't favor one block
     for _ in range(iterations):
         start = time.perf_counter()
         func_a(*args_a, **kwargs_a)
@@ -96,9 +94,7 @@ def build_synthetic_corpus(size: int, json_path: Path, collection, client) -> No
     chunks = [make_fake_chunk(i) for i in range(size)]
     json_path.write_text(json.dumps(chunks), encoding="utf-8")
 
-    # load_corpus_db only reads "documents", so the embeddings themselves
-    # don't need to be meaningful - just present, with a consistent dimension.
-    # chromadb caps how many records a single add() call can take, so batch it.
+    # embeddings just need to be present, not meaningful; chromadb caps batch size
     max_batch_size = client.get_max_batch_size()
     for start in range(0, size, max_batch_size):
         batch = chunks[start:start + max_batch_size]

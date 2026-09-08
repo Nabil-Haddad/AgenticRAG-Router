@@ -18,10 +18,8 @@ from src.retrieval_arena.retrieval.retrieve import bm25_search, cosign_simularit
 logger = logging.getLogger(__name__)
 
 COLLECTION_NAME = "pubmedqa_chunks"
-# PubMedQA abstract sections measured ~100 tokens each; a smaller chunk_size
-# than the PDF pipeline's default (400) keeps chunks close to one section
-# instead of blending Background/Methods/Results together - verified against
-# real context text before this was picked, not tuned against eval results
+# smaller than the PDF pipeline's default (400): PubMedQA abstract sections
+# run ~100 tokens each, so this keeps chunks close to one section
 CHUNK_SIZE = 120
 CHUNK_OVERLAP = 20
 EVAL_TOP_K = 10  # how many results to fetch per query; must cover max(K_VALUES)
@@ -30,8 +28,7 @@ PER_QUERY_K = 5  # depth used for the per-query recall/precision CSV export
 METHODS = ("bm25", "vector", "hybrid")
 RESULTS_DIR = PUBMEDQA_DIR / "results"
 
-# validated categorical palette, fixed order - passes CVD checks for
-# all-pairs comparison at 3 series (see dataviz skill reference palette)
+# fixed order, colorblind-safe for 3 series
 METHOD_COLORS = {"bm25": "#2a78d6", "vector": "#eb6834", "hybrid": "#1baf7a"}
 METHOD_LABELS = {"bm25": "BM25", "vector": "Vector", "hybrid": "Hybrid RRF"}
 
@@ -194,9 +191,7 @@ def run_arena(sample_size: int | None = None) -> dict:
         corpus = {pubid: corpus[pubid] for pubid in sample_ids}
         queries = {pubid: queries[pubid] for pubid in sample_ids}
         qrels = {pubid: qrels[pubid] for pubid in sample_ids}
-        # sampled runs are for quick iteration - kept fully separate from the
-        # real corpus/collection so a small test run can never shadow the
-        # cached full-corpus artifact
+        # kept separate from the real collection so a sample run never shadows it
         chunks_dir = PUBMEDQA_DIR / "sample"
         collection_name = f"{COLLECTION_NAME}_sample"
     else:

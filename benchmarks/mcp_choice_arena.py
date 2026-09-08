@@ -77,9 +77,7 @@ async def run_choice_sample(
                     "vector_recall": recall_at_k(vector_sources, relevant, top_k),
                     "vector_reciprocal_rank": reciprocal_rank(vector_sources, relevant),
                 })
-                # saved after every query, not just at the end - each one is a
-                # real billed API call, so an interrupted or failed run should
-                # never lose progress that already cost money
+                # saved after every query so a crash never loses paid-for progress
                 save_results(records, summarize(records), output_dir)
 
     return records
@@ -179,8 +177,7 @@ def make_figure(summary: dict, output_path: Path) -> None:
     for side in ("top", "right"):
         ax_compare.spines[side].set_visible(False)
 
-    # one legend for the whole figure, placed above both panels - a
-    # per-axes legend collided with this panel's own title
+    # shared legend above both panels; a per-axes one collided with the title
     handles = [Patch(facecolor=claude_color, label="Claude's choice"), Patch(facecolor=TOOL_COLORS["vector_search"], label="Vector only")]
     fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.0), ncol=2, frameon=False)
 
@@ -199,10 +196,7 @@ def run_mcp_choice_arena(sample_size: int = DEFAULT_SAMPLE_SIZE, model: str = Co
 
     corpus, queries, qrels = get_pubmedqa_data()
 
-    # sample only the queries sent to the API - the corpus/index always stays
-    # the full 1,000 documents, otherwise this becomes "needle in a haystack
-    # of `sample_size`" instead of the real 1,000-document retrieval task,
-    # and can't be compared against the full-corpus numbers in results.md
+    # sample only the queries sent to the API; the corpus/index stays full-size
     sample_ids = list(queries)[:sample_size]
     sampled_queries = {qid: queries[qid] for qid in sample_ids}
 
