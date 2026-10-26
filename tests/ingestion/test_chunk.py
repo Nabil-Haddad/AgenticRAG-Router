@@ -1,21 +1,48 @@
 import json
 
+import pytest
+
 from src.retrieval_arena.config import Config
 from src.retrieval_arena.ingestion.chunk import (
     chunk_all,
     chunk_data,
     chunk_document,
     count_tokens,
+    get_tokenizer,
     load_chunks,
     save_chunks_json,
     split_into_sentences,
     tag_sentences,
+    validate_chunk_lengths,
 )
 from src.retrieval_arena.ingestion.document import Document
 
 
 def make_doc(content: str, page_num: int, source: str = "paper.pdf") -> Document:
     return Document(id=f"{source}_p{page_num}", content=content, source=source, page_num=page_num, metadata={})
+
+
+# count_tokens
+
+def test_count_tokens_uses_the_embedders_wordpiece_tokenizer():
+    text = "Unbelievably, retrieval-augmented generation works."
+    expected = len(get_tokenizer().encode(text, add_special_tokens=False))
+    assert count_tokens(text) == expected
+    # WordPiece splits rare words into pieces, so this is more than the whitespace word count
+    assert count_tokens(text) > len(text.split())
+
+
+def test_count_tokens_excludes_special_tokens():
+    assert count_tokens("hello") == 1
+
+
+def test_embed_max_seq_length_matches_the_real_model():
+    sentence_transformers = pytest.importorskip("sentence_transformers")
+    try:
+        model = sentence_transformers.SentenceTransformer(Config.EMBED_MODEL_NAME)
+    except Exception:
+        pytest.skip("embedding model not available offline")
+    assert model.max_seq_length == Config.EMBED_MAX_SEQ_LENGTH
 
 
 # Split_into_sentences
@@ -152,7 +179,57 @@ def test_chunk_document_hard_splits_oversized_single_sentence():
 
     assert len(chunks) > 1
     assert all(c.metadata.get("hard_split") for c in chunks)
-    assert all(c.token_count <= chunk_size + 5 for c in chunks)
+    assert all(c.token_count <= chunk_size for c in chunks)
+
+
+def test_chunk_document_hard_split_preserves_original_text():
+    # decoding WordPiece ids would lowercase this; slicing by offsets must not
+    sentence = " ".join(["Transformers", "BERT", "RAG", "Naïve"] * 40) + "."
+    docs = [make_doc(sentence, page_num=1)]
+
+    chunks = chunk_document(docs, chunk_size=20, overlap=0)
+
+    assert len(chunks) > 1
+    assert all(c.token_count <= 20 for c in chunks)
+    # pieces are cut at token boundaries, so only whitespace between them can differ
+    assert "".join("".join(c.text.split()) for c in chunks) == "".join(sentence.split())
+    assert any("Transformers" in c.text for c in chunks)
+
+
+def test_chunk_document_default_size_chunks_fit_the_embedder_window():
+    sentences = [f"Retrieval-augmented models handle claim number {i} rather unevenly." for i in range(300)]
+    docs = [make_doc(" ".join(sentences), page_num=1)]
+
+    # the documented defaults (Config.CHUNK_SIZE / CHUNK_OVERLAP can be overridden by a local .env)
+    chunks = chunk_document(docs, chunk_size=250, overlap=40)
+
+    assert len(chunks) > 1
+    validate_chunk_lengths(chunks)
+    tokenizer = get_tokenizer()
+    assert all(len(tokenizer.encode(c.text)) <= Config.EMBED_MAX_SEQ_LENGTH for c in chunks)
+
+
+# validate_chunk_lengths
+
+def test_validate_chunk_lengths_accepts_chunks_within_the_limit():
+    chunks = chunk_document([make_doc("A short sentence.", page_num=1)])
+    validate_chunk_lengths(chunks)
+
+
+def test_validate_chunk_lengths_counts_special_tokens():
+    # exactly max_seq_length content tokens + [CLS] + [SEP] overflows by 2
+    text = " ".join(["word"] * Config.EMBED_MAX_SEQ_LENGTH)
+    chunk = chunk_document([make_doc(text, page_num=1)], chunk_size=1000)[0]
+    assert chunk.token_count == Config.EMBED_MAX_SEQ_LENGTH
+    with pytest.raises(ValueError, match="exceed"):
+        validate_chunk_lengths([chunk])
+
+
+def test_validate_chunk_lengths_names_the_offending_chunk():
+    text = " ".join(["word"] * 300)
+    chunk = chunk_document([make_doc(text, page_num=1)], chunk_size=1000)[0]
+    with pytest.raises(ValueError, match=chunk.id):
+        validate_chunk_lengths([chunk])
 
 
 # Chunk_all 
@@ -219,6 +296,22 @@ def test_chunk_data_writes_and_returns_chunks_on_first_run(tmp_path, monkeypatch
     assert new_chunks[0].source == "a.pdf"
     saved = load_chunks(tmp_path / "chunks.json")
     assert saved == new_chunks
+
+
+def test_chunk_data_rejects_chunks_that_would_be_truncated(tmp_path, monkeypatch):
+    monkeypatch.setattr(Config, "chunks_dir", tmp_path)
+    monkeypatch.setattr(Config, "CHUNK_SIZE", 1000)
+    monkeypatch.setattr(
+        "src.retrieval_arena.ingestion.chunk.chunk_all",
+        lambda docs: [chunk_document(d, chunk_size=1000, overlap=0) for d in docs],
+    )
+    doc = [make_doc(" ".join(["word"] * 400), page_num=1, source="a.pdf")]
+
+    with pytest.raises(ValueError, match="exceed"):
+        chunk_data([doc])
+
+    # nothing bad is written to disk
+    assert not (tmp_path / "chunks.json").exists()
 
 
 def test_chunk_data_merges_changed_file_without_touching_others(tmp_path, monkeypatch):

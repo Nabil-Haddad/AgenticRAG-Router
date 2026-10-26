@@ -4,7 +4,6 @@
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-vector%20store-FFA500)](https://www.trychroma.com/)
 [![rank_bm25](https://img.shields.io/badge/rank__bm25-sparse%20retrieval-4B8BBE)](https://pypi.org/project/rank-bm25/)
 [![sentence-transformers](https://img.shields.io/badge/sentence--transformers-embeddings-FFD21E)](https://www.sbert.net/)
-[![tiktoken](https://img.shields.io/badge/tiktoken-tokenization-412991)](https://github.com/openai/tiktoken)
 [![Anthropic API](https://img.shields.io/badge/Anthropic-Claude%20API-D97757)](https://www.anthropic.com/)
 [![MCP](https://img.shields.io/badge/protocol-MCP-6f42c1)](https://modelcontextprotocol.io/)
 [![pytest](https://img.shields.io/badge/pytest-156%20tests-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
@@ -126,7 +125,7 @@ Full breakdown, per-query traces, and the chosen-method chart are in `results.md
 ## Engineering highlights
 
 - **Idempotent pipeline.** A per-file content hash means adding one document to the corpus reprocesses only that document, confirmed by checking the exact vector count delta after a real change, not assumed from the code.
-- **Token-aware chunking.** Chunk size is measured with `tiktoken`, not characters or words, since token count is what actually determines whether text fits an embedding model's input window.
+- **Token-aware chunking.** Chunk size is measured with the embedding model's own WordPiece tokenizer, not characters, words, or a different tokenizer, so a chunk always fits the model's 256-token input window and nothing is silently truncated before embedding. An ingest-time check fails if any chunk would overflow.
 - **A benchmark methodology built to survive scrutiny.** An early version of the internal timing benchmark ran all of one method's trials before the other's, which let system-level noise systematically favor whichever ran in a better window, and reported no variance. Rebuilt to interleave trials and report mean and standard deviation across three corpus scales.
 - **Bugs found by running the pipeline against its own output, not just by testing.** A query embedding mismatch that was silently correct by accident, a reference-stripping heuristic that let entire bibliography pages through, and a downstream stage that kept re-embedding the whole corpus even after idempotency correctly flagged only one changed file, were all caught this way.
 
@@ -215,7 +214,7 @@ Dockerfile, .dockerignore       container build, CPU-only, pinned to the exact d
 ```
 
 ## Stack
-Python, ChromaDB, rank_bm25, sentence-transformers, tiktoken, Anthropic API, MCP, pytest, PyMuPDF, Docker
+Python, ChromaDB, rank_bm25, sentence-transformers, Anthropic API, MCP, pytest, PyMuPDF, Docker
 ## License
 
 MIT, see [LICENSE](LICENSE).

@@ -28,11 +28,12 @@ class Config:
     # chunking
     chunks_dir = project_root / "Data" / "chunks"
     manifest_path = project_root / "Data" / "manifest.json"
-    CHUNK_SIZE : int = int(os.getenv("CHUNK_SIZE", "400"))      # tokens
-    CHUNK_OVERLAP : int = int(os.getenv("CHUNK_OVERLAP", "60")) # tokens
+    CHUNK_SIZE : int = int(os.getenv("CHUNK_SIZE", "250"))      # embedder (WordPiece) tokens; 254 max, MiniLM reserves 2 for [CLS]/[SEP]
+    CHUNK_OVERLAP : int = int(os.getenv("CHUNK_OVERLAP", "40")) # embedder (WordPiece) tokens
 
     # models
     EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
+    EMBED_MAX_SEQ_LENGTH = 256  # input window of EMBED_MODEL_NAME, including [CLS]/[SEP]
     ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 
     # vector db

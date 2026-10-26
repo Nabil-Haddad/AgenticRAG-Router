@@ -2,16 +2,16 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
-import tiktoken
+from transformers import AutoTokenizer
 
 from ..config import Config
 from .document import Document
 
 logger = logging.getLogger(__name__)
 
-ENCODING = tiktoken.get_encoding("cl100k_base")
 SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
 ABBREVIATIONS = ("et al.", "e.g.", "i.e.", "cf.", "vs.", "Fig.", "Eq.", "etc.")
 
@@ -27,8 +27,17 @@ class Chunk:
     metadata: dict = field(default_factory=dict)
 
 
+@lru_cache(maxsize=1)
+def get_tokenizer() -> AutoTokenizer:
+    # the embedder's own WordPiece tokenizer, so chunk sizes match what the model actually sees.
+    # model_max_length is lifted only to silence the "sequence too long" warning on long sentences
+    return AutoTokenizer.from_pretrained(
+        f"sentence-transformers/{Config.EMBED_MODEL_NAME}", model_max_length=int(1e9)
+    )
+
+
 def count_tokens(text: str) -> int:
-    return len(ENCODING.encode(text))
+    return len(get_tokenizer().encode(text, add_special_tokens=False))
 
 
 def split_into_sentences(text: str) -> list[str]:
@@ -54,10 +63,13 @@ def tag_sentences(docs: list[Document]) -> list[tuple[str, int]]:
 
 
 def _split_long_sentence(sentence: str, chunk_size: int) -> list[str]:
-    tokens = ENCODING.encode(sentence)
+    # slice the original text by offsets; decoding WordPiece ids would lowercase and alter it
+    offsets = get_tokenizer()(
+        sentence, add_special_tokens=False, return_offsets_mapping=True
+    )["offset_mapping"]
     return [
-        ENCODING.decode(tokens[start:start + chunk_size])
-        for start in range(0, len(tokens), chunk_size)
+        sentence[offsets[start][0]:offsets[min(start + chunk_size, len(offsets)) - 1][1]]
+        for start in range(0, len(offsets), chunk_size)
     ]
 
 
@@ -131,6 +143,17 @@ def chunk_document(docs: list[Document], chunk_size: int = Config.CHUNK_SIZE, ov
     return chunks
 
 
+def validate_chunk_lengths(chunks: list[Chunk], max_seq_length: int = Config.EMBED_MAX_SEQ_LENGTH) -> None:
+    # re-tokenize with [CLS]/[SEP]: this is the length the embedder truncates at
+    tokenizer = get_tokenizer()
+    too_long = [c.id for c in chunks if len(tokenizer.encode(c.text)) > max_seq_length]
+    if too_long:
+        raise ValueError(
+            f"{len(too_long)} chunk(s) exceed the embedder's {max_seq_length}-token limit "
+            f"and would be silently truncated (first: {too_long[0]}). Lower CHUNK_SIZE."
+        )
+
+
 def chunk_all( documents: list[list[Document]], chunk_size: int = Config.CHUNK_SIZE, overlap: int = Config.CHUNK_OVERLAP ) -> list[list[Chunk]]:
     return [chunk_document(docs, chunk_size, overlap) for docs in documents]
 
@@ -172,6 +195,7 @@ def chunk_data(changed_documents: list[list[Document]]) -> list[Chunk]:
 
     new_chunks_grouped = chunk_all(changed_documents)
     new_chunks = [c for pdf_chunks in new_chunks_grouped for c in pdf_chunks]
+    validate_chunk_lengths(new_chunks)
 
     save_chunks_json(retained_chunks + new_chunks, Config.chunks_dir)
 
