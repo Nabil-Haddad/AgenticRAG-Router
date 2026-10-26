@@ -86,10 +86,28 @@ def test_cosign_simularity_embeds_query_and_returns_results(mocker):
         query_embeddings=[[0.5, 0.6]],
         n_results=2,
     )
-    assert results == [
-        {"idx": "c1", "text": "text one", "score": 0.1, "source": "a.pdf"},
-        {"idx": "c2", "text": "text two", "score": 0.2, "source": "b.pdf"},
-    ]
+    # cosine distance 0.1 / 0.2 -> similarity 0.9 / 0.8, best match first
+    assert [r["idx"] for r in results] == ["c1", "c2"]
+    assert [r["score"] for r in results] == pytest.approx([0.9, 0.8])
+    assert [r["text"] for r in results] == ["text one", "text two"]
+    assert [r["source"] for r in results] == ["a.pdf", "b.pdf"]
+
+
+def test_cosign_simularity_scores_are_similarities_where_higher_is_better(mocker):
+    fake_collection = mocker.MagicMock()
+    fake_collection.query.return_value = {
+        "ids": [["near", "far"]],
+        "documents": [["t1", "t2"]],
+        "distances": [[0.0, 1.0]],
+        "metadatas": [[{"source": "a.pdf"}, {"source": "a.pdf"}]],
+    }
+    mocker.patch("src.retrieval_arena.retrieval.retrieve.embed_texts", return_value=[[0.5]])
+
+    results = cosign_simularity("q", collection=fake_collection)
+
+    assert results[0]["score"] == pytest.approx(1.0)  # identical direction
+    assert results[1]["score"] == pytest.approx(0.0)  # orthogonal
+    assert results[0]["score"] > results[1]["score"]
 
 
 def test_cosign_simularity_uses_a_given_collection_instead_of_the_default(mocker):

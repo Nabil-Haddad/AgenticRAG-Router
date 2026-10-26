@@ -38,12 +38,26 @@ def hash_string_list(strings: list[str]) -> str:
     return hashlib.sha256(combined_text.encode("utf-8")).hexdigest()
 
 
+def _current_settings() -> dict:
+    return {
+        "embed_model": Config.EMBED_MODEL_NAME,
+        "chunk_size": Config.CHUNK_SIZE,
+        "chunk_overlap": Config.CHUNK_OVERLAP,
+    }
+
+
 # if we have the same data we return (False, None)
 # if we have completely new data we return (True, docs)
 # if we have partial new data we return (True, only the changed/new pdfs)
 def verify_data(documents: list[list[Document]]) -> tuple[bool, list[list[Document]] | None]:
     manifest = load_manifest(Config.manifest_path)
     stored_files = manifest.get("files", {}) if manifest is not None else {}
+
+    # existing chunks and vectors were built with these settings; if they changed, every file is stale
+    settings = _current_settings()
+    settings_changed = manifest is not None and any(manifest.get(k) != v for k, v in settings.items())
+    if settings_changed:
+        logger.info("Embedding model or chunking settings changed since the last run; reprocessing all files.")
 
     # hash each pdf's pages on their own, so we can tell which specific files are new/changed
     new_files: dict[str, str] = {}
@@ -54,7 +68,7 @@ def verify_data(documents: list[list[Document]]) -> tuple[bool, list[list[Docume
         source = pdf_docs[0].source
         file_hash = hash_string_list([d.content for d in pdf_docs])
         new_files[source] = file_hash
-        if stored_files.get(source) != file_hash:
+        if settings_changed or stored_files.get(source) != file_hash:
             changed_documents.append(pdf_docs)
 
     if not changed_documents:
@@ -63,9 +77,7 @@ def verify_data(documents: list[list[Document]]) -> tuple[bool, list[list[Docume
 
     save_manifest({
         "schema_version": 1,
-        "embed_model": Config.EMBED_MODEL_NAME,
-        "chunk_size": Config.CHUNK_SIZE,
-        "chunk_overlap": Config.CHUNK_OVERLAP,
+        **settings,
         "files": new_files,
     }, Config.manifest_path)
 
