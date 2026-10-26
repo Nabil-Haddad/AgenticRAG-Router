@@ -157,6 +157,31 @@ def test_chunk_document_overlap_repeats_trailing_sentence():
         assert end_of_this == start_of_next
 
 
+def test_chunk_document_overlap_is_dropped_when_it_would_push_the_next_sentence_over_budget():
+    # a short sentence followed by one that nearly fills the chunk: carrying the short one
+    # as overlap would make the next chunk exceed chunk_size
+    short = "Short lead in sentence here."
+    long_ = " ".join(["alpha"] * 90) + "."
+    filler = " ".join(["beta"] * 90) + "."
+    docs = [make_doc(" ".join([filler, short, long_]), page_num=1)]
+
+    chunk_size = count_tokens(long_) + 5
+    overlap = count_tokens(short) + 2  # big enough to carry `short` into the next chunk
+    chunks = chunk_document(docs, chunk_size=chunk_size, overlap=overlap)
+
+    assert len(chunks) >= 2
+    assert all(count_tokens(c.text) <= chunk_size for c in chunks)
+
+
+def test_chunk_document_never_exceeds_chunk_size_with_overlap():
+    sentences = [" ".join(["word"] * n) + "." for n in (5, 60, 8, 55, 3, 59, 12, 58)] * 6
+    docs = [make_doc(" ".join(sentences), page_num=1)]
+
+    for chunk_size, overlap in [(70, 20), (64, 40), (100, 30)]:
+        chunks = chunk_document(docs, chunk_size=chunk_size, overlap=overlap)
+        assert all(count_tokens(c.text) <= chunk_size for c in chunks), (chunk_size, overlap)
+
+
 def test_chunk_document_tracks_page_span_across_pages():
     docs = [
         make_doc("Sentence on page one.", page_num=1),

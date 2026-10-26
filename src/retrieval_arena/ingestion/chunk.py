@@ -133,6 +133,11 @@ def chunk_document(docs: list[Document], chunk_size: int = Config.CHUNK_SIZE, ov
                     break
                 overlap_sentences.insert(0, (s, p))
                 overlap_tokens += t
+            # the carried overlap must leave room for the sentence about to be added,
+            # otherwise the new chunk starts out over budget
+            while overlap_sentences and overlap_tokens + sentence_tokens > chunk_size:
+                overlap_sentences.pop(0)
+                overlap_tokens = sum(count_tokens(s) for s, _ in overlap_sentences)
             current = overlap_sentences
             current_tokens = overlap_tokens
 
