@@ -374,3 +374,62 @@ def test_verify_data_returns_only_the_newly_added_file(tmp_path, monkeypatch):
 
     assert valid is True
     assert new_docs == [pdf_b]
+
+
+def test_verify_data_saves_the_model_and_chunk_settings_in_the_manifest(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "manifest.json"
+    monkeypatch.setattr(Config, "manifest_path", manifest_path)
+
+    verify_data([[make_doc("Content A.", source="a.pdf")]])
+
+    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert saved["embed_model"] == Config.EMBED_MODEL_NAME
+    assert saved["chunk_size"] == Config.CHUNK_SIZE
+    assert saved["chunk_overlap"] == Config.CHUNK_OVERLAP
+
+
+@pytest.mark.parametrize("setting, new_value", [
+    ("CHUNK_SIZE", 123),
+    ("CHUNK_OVERLAP", 7),
+    ("EMBED_MODEL_NAME", "some-other-model"),
+])
+def test_verify_data_reprocesses_every_file_when_a_setting_changes(tmp_path, monkeypatch, setting, new_value):
+    monkeypatch.setattr(Config, "manifest_path", tmp_path / "manifest.json")
+    pdf_a = [make_doc("Content A.", source="a.pdf")]
+    pdf_b = [make_doc("Content B.", source="b.pdf")]
+    verify_data([pdf_a, pdf_b])
+
+    monkeypatch.setattr(Config, setting, new_value)
+    valid, new_docs = verify_data([pdf_a, pdf_b])  # same files, different settings
+
+    assert valid is True
+    assert new_docs == [pdf_a, pdf_b]
+
+
+def test_verify_data_settings_change_is_applied_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(Config, "manifest_path", tmp_path / "manifest.json")
+    pdf_a = [make_doc("Content A.", source="a.pdf")]
+    verify_data([pdf_a])
+    monkeypatch.setattr(Config, "CHUNK_SIZE", 123)
+    verify_data([pdf_a])  # rebuild under the new settings
+
+    valid, new_docs = verify_data([pdf_a])  # nothing changed since
+
+    assert valid is False
+    assert new_docs is None
+
+
+def test_verify_data_reprocesses_when_the_manifest_has_no_settings(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "manifest.json"
+    monkeypatch.setattr(Config, "manifest_path", manifest_path)
+    pdf_a = [make_doc("Content A.", source="a.pdf")]
+    verify_data([pdf_a])
+    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for key in ("embed_model", "chunk_size", "chunk_overlap"):
+        del saved[key]
+    manifest_path.write_text(json.dumps(saved), encoding="utf-8")
+
+    valid, new_docs = verify_data([pdf_a])
+
+    assert valid is True
+    assert new_docs == [pdf_a]

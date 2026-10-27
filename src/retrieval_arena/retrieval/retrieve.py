@@ -45,8 +45,9 @@ def cosign_simularity(query : str, top_k : int = 5, collection=None)->list[dict]
         return []
 
     return [
-        {"idx": idx, "text": text, "score": score, "source": meta.get("source")}
-        for idx, text, score, meta in zip(
+        # collections use the cosine space, where distance = 1 - similarity
+        {"idx": idx, "text": text, "score": 1 - distance, "source": meta.get("source")}
+        for idx, text, distance, meta in zip(
             results['ids'][0], results['documents'][0], results['distances'][0], results['metadatas'][0]
         )
     ]
