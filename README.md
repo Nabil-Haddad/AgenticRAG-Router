@@ -20,7 +20,7 @@ Built from scratch without LangChain or LlamaIndex, so every stage (chunking, em
 | | |
 |---|---|
 | Language | Python 3.12 |
-| Benchmark | PubMedQA (`pqa_labeled`), 1,000 real biomedical question and abstract pairs |
+| Benchmark | PubMedQA (`pqa_labeled`), 1,000 real biomedical questions. The 1,000 abstracts are split into about 3,500 chunks, and a query counts as a hit if any chunk of its source abstract is retrieved. |
 | Retrieval methods | BM25, dense vector search, hybrid RRF fusion, each exposed as a named MCP tool |
 | Agentic layer | An LLM agent selects the retrieval method per query via the Anthropic API and MCP |
 | Headline finding | On this benchmark, hybrid search (which merges BM25 and vector results) does worse than plain vector search, and the cause is traced query by query. When an LLM agent is given the same three options with no hint about which is best, it picks hybrid most of the time and loses accuracy, which confirms the result a second way. |
