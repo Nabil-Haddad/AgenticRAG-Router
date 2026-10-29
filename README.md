@@ -2,18 +2,16 @@
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-vector%20store-FFA500)](https://www.trychroma.com/)
-[![rank_bm25](https://img.shields.io/badge/rank__bm25-sparse%20retrieval-4B8BBE)](https://pypi.org/project/rank-bm25/)
 [![sentence-transformers](https://img.shields.io/badge/sentence--transformers-embeddings-FFD21E)](https://www.sbert.net/)
 [![Anthropic API](https://img.shields.io/badge/Anthropic-Claude%20API-D97757)](https://www.anthropic.com/)
 [![MCP](https://img.shields.io/badge/protocol-MCP-6f42c1)](https://modelcontextprotocol.io/)
 [![pytest](https://img.shields.io/badge/pytest-179%20tests-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
-[![PyMuPDF](https://img.shields.io/badge/PyMuPDF-PDF%20extraction-ED1C24)](https://pymupdf.readthedocs.io/)
 [![Docker](https://img.shields.io/badge/Docker-containerized-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![CI](https://img.shields.io/github/actions/workflow/status/Nabil-Haddad/AgenticRAG-Router/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/Nabil-Haddad/AgenticRAG-Router/actions/workflows/ci.yml)
 
-**A production-style RAG pipeline where an LLM agent chooses its own retrieval strategy through MCP, benchmarked against static baselines on 1,000 real biomedical questions.**
+**A RAG pipeline built from scratch where an LLM agent chooses its own retrieval strategy through MCP, benchmarked against static baselines on 1,000 real biomedical questions.**
 
-Built from scratch without LangChain or LlamaIndex, so every stage (chunking, embedding, indexing, retrieval, fusion) is visible in the code instead of hidden behind a framework call.
+No LangChain or LlamaIndex is used, so every stage (chunking, embedding, indexing, retrieval, fusion) is visible in the code instead of hidden behind a framework call.
 
 ## At a glance
 
@@ -27,7 +25,7 @@ Built from scratch without LangChain or LlamaIndex, so every stage (chunking, em
 
 ## Why this exists
 
-Most RAG projects treat hybrid retrieval as the safe default and stop there. This project tests that assumption. It builds the three retrieval strategies separately, evaluates them on a real benchmark, and finds a case where hybrid loses to the simpler vector search. It then asks whether an LLM agent, given all three as tools, would pick the best one on its own.
+I was working on my university dissertation project, a trustworthy multimodal RAG system for clinical decision support. I found that hybrid search with Reciprocal Rank Fusion (RRF) was the best retrieval approach, so I decided to build my own small system to test that claim and get more hands-on experience with the topic. Along the way I had a second question: if an LLM were allowed to choose its own retrieval method, which one would it pick?
 
 ## Architecture
 
@@ -156,11 +154,17 @@ Full breakdown, per-query traces, and the chosen-method chart are in `results.md
 
 ## Known limitations
 
+The PubMedQA result is near ceiling (vector Recall@1 is 97.7%), so it may not hold on larger or harder corpora.
+
+Hybrid uses equal-weight RRF at a single k, which I did not tune. A weighted or tuned fusion might narrow the gap.
+
 - The production ingestion pipeline has only been exercised against 3 sample PDFs.
 - Idempotency tracks the extracted text plus the embedding model and the chunk size and overlap settings, but not the chunking code. If the chunking algorithm is edited without changing those settings, files whose text did not change will not be reprocessed.
 - `--agent` mode makes live, billed Anthropic API calls. Everything else in this project is local and free to run.
 
 ## Running it
+
+The raw PDFs are not included in this repository. To build the index yourself, first collect some PDF files and put them in `Data/raw/`.
 
 ```bash
 pip install -r requirements.txt
@@ -217,7 +221,7 @@ Dockerfile, .dockerignore       container build, CPU-only, pinned to the exact d
 ```
 
 ## Stack
-Python, ChromaDB, rank_bm25, sentence-transformers, Anthropic API, MCP, pytest, PyMuPDF, Docker
+Python, ChromaDB, sentence-transformers, Anthropic API, MCP, pytest, Docker
 ## License
 
 MIT, see [LICENSE](LICENSE).
