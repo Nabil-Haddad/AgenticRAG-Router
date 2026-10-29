@@ -13,7 +13,7 @@ from src.retrieval_arena.config import Config
 from src.retrieval_arena.ingestion.chunk import chunk_all, save_chunks_json
 from src.retrieval_arena.ingestion.document import Document
 from src.retrieval_arena.index.index import get_collection, store_index
-from src.retrieval_arena.retrieval.retrieve import bm25_search, cosign_simularity, search_hybrid_rrf
+from src.retrieval_arena.retrieval.retrieve import bm25_search, cosine_similarity, search_hybrid_rrf
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ def _run_method(method: str, question: str, top_k: int, chunks_path: Path, colle
     if method == "bm25":
         return bm25_search(question, path=chunks_path, top_k=top_k)
     if method == "vector":
-        return cosign_simularity(question, top_k=top_k, collection=collection)
+        return cosine_similarity(question, top_k=top_k, collection=collection)
     if method == "hybrid":
         return search_hybrid_rrf(question, top_k=top_k, bm25_path=chunks_path, collection=collection)
     raise ValueError(f"Unknown method {method!r}")

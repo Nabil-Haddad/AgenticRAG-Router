@@ -77,14 +77,14 @@ def test_run_method_dispatches_to_bm25(mocker):
 
 
 def test_run_method_dispatches_to_vector(mocker):
-    cosign_simularity = mocker.patch("benchmarks.pubmedqa_arena.cosign_simularity", return_value=["vector_result"])
+    cosine_similarity = mocker.patch("benchmarks.pubmedqa_arena.cosine_similarity", return_value=["vector_result"])
     path = mocker.sentinel.path
     collection = mocker.sentinel.collection
 
     result = _run_method("vector", "a question", top_k=10, chunks_path=path, collection=collection)
 
     assert result == ["vector_result"]
-    cosign_simularity.assert_called_once_with("a question", top_k=10, collection=collection)
+    cosine_similarity.assert_called_once_with("a question", top_k=10, collection=collection)
 
 
 def test_run_method_dispatches_to_hybrid(mocker):

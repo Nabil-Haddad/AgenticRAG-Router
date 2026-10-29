@@ -20,7 +20,7 @@ from benchmarks.pubmedqa_metrics import recall_at_k, reciprocal_rank
 from src.retrieval_arena.config import Config
 from src.retrieval_arena.index.index import get_collection
 from src.retrieval_arena.mcp_server.client import SERVER_MODULE, run_conversation
-from src.retrieval_arena.retrieval.retrieve import cosign_simularity
+from src.retrieval_arena.retrieval.retrieve import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ async def run_choice_sample(
             for i, (qid, question) in enumerate(queries.items(), start=1):
                 logger.info(f"[{i}/{len(queries)}] Asking Claude: {question[:80]}...")
                 claude_result = await run_conversation(session, anthropic_client, question, model, top_k)
-                vector_results = cosign_simularity(question, top_k=top_k, collection=collection)
+                vector_results = cosine_similarity(question, top_k=top_k, collection=collection)
 
                 claude_sources = [r["source"] for r in claude_result.retrieved_results]
                 vector_sources = [r["source"] for r in vector_results]

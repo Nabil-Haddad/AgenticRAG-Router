@@ -10,7 +10,7 @@ from mcp import types
 from mcp.server import Server
 
 from ..index.index import get_collection
-from ..retrieval.retrieve import bm25_search, cosign_simularity, search_hybrid_rrf
+from ..retrieval.retrieve import bm25_search, cosine_similarity, search_hybrid_rrf
 
 TOOL_DESCRIPTIONS = {
     "bm25_search": (
@@ -68,13 +68,13 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     collection_name = os.getenv("RETRIEVAL_ARENA_MCP_COLLECTION")
     chunks_path = _resolve_chunks_path()
 
-    # bm25_search/cosign_simularity print() on failure; stdio MCP reserves
+    # bm25_search/cosine_similarity print() on failure; stdio MCP reserves
     # stdout for JSON-RPC framing, so any stray print corrupts the protocol
     with contextlib.redirect_stdout(sys.stderr):
         if name == "bm25_search":
             results = bm25_search(query, path=chunks_path, top_k=top_k)
         elif name == "vector_search":
-            results = cosign_simularity(query, top_k=top_k, collection=_resolve_collection(collection_name))
+            results = cosine_similarity(query, top_k=top_k, collection=_resolve_collection(collection_name))
         elif name == "hybrid_search":
             results = search_hybrid_rrf(query, top_k=top_k, bm25_path=chunks_path, collection=_resolve_collection(collection_name))
         else:

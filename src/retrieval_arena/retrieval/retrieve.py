@@ -10,7 +10,7 @@ from rank_bm25 import BM25Okapi
 
 logger = logging.getLogger(__name__)
 
-# Create 3 different function cosign_simularity , mb25_search , search_hypbrid_rrf
+# Create 3 different function cosine_similarity , bm25_search , search_hybrid_rrf
 
 def peek_first_5_elements()->None:
     try :
@@ -28,7 +28,7 @@ def peek_first_5_elements()->None:
         print(f"With Documents : {samples['documents'][i][:40]}")
 
 
-def cosign_simularity(query : str, top_k : int = 5, collection=None)->list[dict]:
+def cosine_similarity(query : str, top_k : int = 5, collection=None)->list[dict]:
     try :
         if collection is None:
             collection = get_collection()
@@ -96,7 +96,7 @@ def bm25_search(query: str, path: Path | None = None, top_k: int = 5) -> list[di
         print(e)
         return []
 
-    # same {idx, text, score, source} shape as cosign_simularity
+    # same {idx, text, score, source} shape as cosine_similarity
     return [
         {"idx": chunks[i].id, "text": chunks[i].text, "score": float(scores[i]), "source": chunks[i].source}
         for i in top_indices
@@ -104,7 +104,7 @@ def bm25_search(query: str, path: Path | None = None, top_k: int = 5) -> list[di
 
 def search_hybrid_rrf(query: str, top_k: int = 5, candidate_k: int = 20, k: int = 60, bm25_path: Path | None = None,collection=None, ) -> list[dict]:
     bm25_results = bm25_search(query, path=bm25_path, top_k=candidate_k)
-    vector_results = cosign_simularity(query, top_k=candidate_k, collection=collection)
+    vector_results = cosine_similarity(query, top_k=candidate_k, collection=collection)
 
     rrf_scores: dict[str, float] = {}
     texts: dict[str, str] = {}
@@ -128,7 +128,7 @@ def search_hybrid_rrf(query: str, top_k: int = 5, candidate_k: int = 20, k: int 
 _RETRIEVAL_METHODS = {
     "hybrid": search_hybrid_rrf,
     "bm25": bm25_search,
-    "vector": cosign_simularity,
+    "vector": cosine_similarity,
 }
 
 

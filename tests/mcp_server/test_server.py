@@ -61,7 +61,7 @@ def test_call_tool_dispatches_to_vector_search(mocker):
     fake_collection = mocker.sentinel.collection
     mocker.patch("src.retrieval_arena.mcp_server.server._resolve_collection", return_value=fake_collection)
     mock_vector = mocker.patch(
-        "src.retrieval_arena.mcp_server.server.cosign_simularity",
+        "src.retrieval_arena.mcp_server.server.cosine_similarity",
         return_value=[{"idx": "c2", "text": "t", "score": 0.9, "source": "s"}],
     )
 
@@ -110,7 +110,7 @@ def test_call_tool_resolves_collection_name_from_env_var(monkeypatch, mocker):
     mock_get_collection = mocker.patch(
         "src.retrieval_arena.mcp_server.server.get_collection", return_value=mocker.sentinel.collection
     )
-    mocker.patch("src.retrieval_arena.mcp_server.server.cosign_simularity", return_value=[])
+    mocker.patch("src.retrieval_arena.mcp_server.server.cosine_similarity", return_value=[])
 
     run(call_tool("vector_search", {"query": "q"}))
 
@@ -122,7 +122,7 @@ def test_call_tool_resolves_collection_as_none_when_env_var_unset(monkeypatch, m
     mock_get_collection = mocker.patch(
         "src.retrieval_arena.mcp_server.server.get_collection", return_value=mocker.sentinel.collection
     )
-    mocker.patch("src.retrieval_arena.mcp_server.server.cosign_simularity", return_value=[])
+    mocker.patch("src.retrieval_arena.mcp_server.server.cosine_similarity", return_value=[])
 
     run(call_tool("vector_search", {"query": "q"}))
 

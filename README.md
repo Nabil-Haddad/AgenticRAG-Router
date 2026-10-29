@@ -44,7 +44,7 @@ Data/chunks/chunks.json   every chunk from every source
       | index/index.py          embed, store with a targeted update, not a full rebuild
       v
 vectordb/                 persistent ChromaDB collection
-      | retrieval/retrieve.py   bm25_search / cosign_simularity / search_hybrid_rrf
+      | retrieval/retrieve.py   bm25_search / cosine_similarity / search_hybrid_rrf
       v
 retrieve(query, method) -> ranked results
       | mcp_server/server.py    same three methods exposed as named MCP tools
@@ -136,9 +136,9 @@ Full breakdown, per-query traces, and the chosen-method chart are in `results.md
 
 **Pipeline**
 - Chunk size was counted with tiktoken (400 tokens), but the embedding model, all-MiniLM-L6-v2, silently stops reading at 256 WordPiece tokens ([#4](https://github.com/Nabil-Haddad/AgenticRAG-Router/issues/4)). On the real corpus, 107 of 111 chunks (96.4%) were too long, and about 32% of each chunk's text never reached the embedding. Fixed by counting with the model's own tokenizer (default chunk size 250, overlap 40), splitting oversized sentences by character position so the original text stays intact, and stopping ingestion if any chunk is over the limit. The new check immediately exposed a second bug: overlap sentences carried over from the previous chunk could push a new chunk over its size limit. Fixed, with a regression test that fails without the fix.
-- ChromaDB collections used its default L2 distance, while `cosign_simularity` was named, and assumed to be, cosine similarity ([#5](https://github.com/Nabil-Haddad/AgenticRAG-Router/issues/5)). The returned "score" was therefore a distance, where lower is better. Collections are now created with cosine distance and the function returns `1 - distance`. Each collection also stores the embedding model name, and opening one built with a different model or distance setting raises an error instead of silently mixing vectors.
+- ChromaDB collections used its default L2 distance, while the retrieval function was named `cosine_similarity` and assumed to be a cosine similarity ([#5](https://github.com/Nabil-Haddad/AgenticRAG-Router/issues/5)). The returned "score" was therefore a distance, where lower is better. Collections are now created with cosine distance and the function returns `1 - distance`. Each collection also stores the embedding model name, and opening one built with a different model or distance setting raises an error instead of silently mixing vectors.
 - The ingestion manifest only tracked file hashes, so changing the embedding model or chunk settings would not reprocess unchanged files. It now also stores the embedding model and chunk settings, and any change reprocesses everything.
-- `cosign_simularity` originally let ChromaDB use its own default embedder instead of the project's configured one. The two happened to match, so it worked by accident, and would have given wrong results as soon as the embedding model changed.
+- `cosine_similarity` originally let ChromaDB use its own default embedder instead of the project's configured one. The two happened to match, so it worked by accident, and would have given wrong results as soon as the embedding model changed.
 - The reference-stripping rule only looked for citation markers at the start of a line, so it missed bibliography pages where one citation wraps over several lines. A real query for "machine learning algorithms" returned mostly raw citation text. Before the fix, 27 of 147 chunks were pure bibliography. After it, 0.
 - The sentence splitter treated `"et al. "` as the end of a sentence, so some chunks started in the middle of a sentence with no context.
 - The manifest correctly detected which files changed, but the chunking and indexing stages ignored that and reprocessed the entire corpus anyway. Found by checking the actual chunk and vector counts after changing one file, not by a failing test.
@@ -204,7 +204,7 @@ src/retrieval_arena/
 |-- config.py               central settings, sourced from .env
 |-- ingestion/               extraction, cleaning, chunking, embedding
 |-- index/                   ChromaDB indexing
-|-- retrieval/                bm25_search, cosign_simularity, search_hybrid_rrf, retrieve()
+|-- retrieval/                bm25_search, cosine_similarity, search_hybrid_rrf, retrieve()
 `-- mcp_server/               server.py exposes the 3 methods as MCP tools, client.py bridges to the Anthropic API
 
 benchmarks/                   evaluation harnesses, kept separate from library code
